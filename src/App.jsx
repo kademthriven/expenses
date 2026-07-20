@@ -542,6 +542,198 @@ function ProfileForm({ user, profile, onCancel, onUpdated }) {
   )
 }
 
+const EXPENSE_CATEGORIES = [
+  { value: 'food', label: 'Food', icon: 'F', color: '#ef7d55' },
+  { value: 'petrol', label: 'Petrol', icon: 'P', color: '#6b74e6' },
+  { value: 'transport', label: 'Transport', icon: 'T', color: '#288fbd' },
+  { value: 'shopping', label: 'Shopping', icon: 'S', color: '#b36ad4' },
+  { value: 'bills', label: 'Bills', icon: 'B', color: '#d19b36' },
+  { value: 'entertainment', label: 'Entertainment', icon: 'E', color: '#e45e86' },
+  { value: 'healthcare', label: 'Healthcare', icon: 'H', color: '#27a886' },
+  { value: 'salary', label: 'Salary', icon: '$', color: '#13946b' },
+  { value: 'other', label: 'Other', icon: 'O', color: '#718496' },
+]
+
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+})
+
+function DailyExpenses() {
+  const [amount, setAmount] = useState('')
+  const [description, setDescription] = useState('')
+  const [category, setCategory] = useState('')
+  const [expenses, setExpenses] = useState([])
+  const [expenseError, setExpenseError] = useState('')
+
+  const totalSpent = expenses.reduce((total, expense) => total + expense.amount, 0)
+
+  const handleExpenseSubmit = (event) => {
+    event.preventDefault()
+    const parsedAmount = Number(amount)
+    const cleanDescription = description.trim()
+    setExpenseError('')
+
+    if (!amount || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setExpenseError('Enter an amount greater than zero.')
+      return
+    }
+
+    if (!cleanDescription) {
+      setExpenseError('Add a short description of the expense.')
+      return
+    }
+
+    const selectedCategory = EXPENSE_CATEGORIES.find((item) => item.value === category)
+    if (!selectedCategory) {
+      setExpenseError('Choose a category for this expense.')
+      return
+    }
+
+    setExpenses((currentExpenses) => [
+      {
+        id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+        amount: parsedAmount,
+        description: cleanDescription,
+        category: selectedCategory,
+        addedAt: new Date(),
+      },
+      ...currentExpenses,
+    ])
+    setAmount('')
+    setDescription('')
+    setCategory('')
+  }
+
+  return (
+    <section className="expenses-panel" aria-labelledby="daily-expenses-title">
+      <div className="expenses-heading">
+        <div>
+          <span className="eyebrow">QUICK ENTRY</span>
+          <h2 id="daily-expenses-title">Daily expenses</h2>
+          <p>Record what you spent today and keep every purchase in view.</p>
+        </div>
+        <div className="expense-total" aria-label={`Total recorded: ${currencyFormatter.format(totalSpent)}`}>
+          <span>Recorded total</span>
+          <strong>{currencyFormatter.format(totalSpent)}</strong>
+        </div>
+      </div>
+
+      <form className="expense-form" onSubmit={handleExpenseSubmit} noValidate>
+        <div className="expense-field expense-amount-field">
+          <label htmlFor="expense-amount">Money spent</label>
+          <div className="expense-control amount-control">
+            <span aria-hidden="true">$</span>
+            <input
+              id="expense-amount"
+              name="expense-amount"
+              type="number"
+              inputMode="decimal"
+              min="0.01"
+              step="0.01"
+              placeholder="0.00"
+              value={amount}
+              onChange={(event) => {
+                setAmount(event.target.value)
+                setExpenseError('')
+              }}
+              required
+            />
+          </div>
+        </div>
+
+        <div className="expense-field expense-description-field">
+          <label htmlFor="expense-description">Description</label>
+          <div className="expense-control">
+            <input
+              id="expense-description"
+              name="expense-description"
+              type="text"
+              maxLength="100"
+              placeholder="e.g. Lunch with the team"
+              value={description}
+              onChange={(event) => {
+                setDescription(event.target.value)
+                setExpenseError('')
+              }}
+              required
+            />
+          </div>
+        </div>
+
+        <div className="expense-field expense-category-field">
+          <label htmlFor="expense-category">Category</label>
+          <div className="expense-control select-control">
+            <select
+              id="expense-category"
+              name="expense-category"
+              value={category}
+              onChange={(event) => {
+                setCategory(event.target.value)
+                setExpenseError('')
+              }}
+              required
+            >
+              <option value="">Choose category</option>
+              {EXPENSE_CATEGORIES.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <button className="add-expense-button" type="submit">
+          <span aria-hidden="true">+</span>
+          Add expense
+        </button>
+
+        {expenseError && (
+          <div className="message error-message expense-form-error" role="alert">
+            {expenseError}
+          </div>
+        )}
+      </form>
+
+      <div className="expense-list-heading">
+        <h3>Today’s entries</h3>
+        <span>{expenses.length} {expenses.length === 1 ? 'expense' : 'expenses'}</span>
+      </div>
+
+      {expenses.length === 0 ? (
+        <div className="expenses-empty-state">
+          <span aria-hidden="true">$</span>
+          <h3>No expenses added yet</h3>
+          <p>Use the form above to record your first expense for today.</p>
+        </div>
+      ) : (
+        <ul className="expense-list">
+          {expenses.map((expense) => (
+            <li key={expense.id}>
+              <span
+                className="expense-category-icon"
+                style={{ '--category-color': expense.category.color }}
+                aria-hidden="true"
+              >
+                {expense.category.icon}
+              </span>
+              <div className="expense-details">
+                <strong>{expense.description}</strong>
+                <span>
+                  {expense.category.label} · {expense.addedAt.toLocaleTimeString([], {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+              <strong className="expense-amount">−{currencyFormatter.format(expense.amount)}</strong>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 function AccountPage({ user }) {
   const [profile, setProfile] = useState({
     displayName: user.displayName ?? '',
@@ -749,6 +941,8 @@ function AccountPage({ user }) {
               <span>$</span>
             </div>
           </section>
+
+          <DailyExpenses />
         </main>
       )}
     </div>
