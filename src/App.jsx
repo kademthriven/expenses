@@ -9,6 +9,7 @@ import {
   auth,
   firebaseConfigurationError,
   getFirebaseUserProfile,
+  sendFirebaseEmailVerification,
   updateFirebaseUserProfile,
 } from './firebase'
 import './App.css'
@@ -28,6 +29,12 @@ const PROFILE_ERROR_MESSAGES = {
   INVALID_ID_TOKEN: 'Your session is no longer valid. Please log in again.',
   TOKEN_EXPIRED: 'Your session has expired. Please log in again.',
   USER_NOT_FOUND: 'We could not find this account. Please log in again.',
+}
+
+const EMAIL_VERIFICATION_ERROR_MESSAGES = {
+  INVALID_ID_TOKEN: 'Your session is no longer valid. Log out, then log in again before requesting a new verification email.',
+  TOKEN_EXPIRED: 'Your session has expired. Log out, then log in again before requesting a new verification email.',
+  USER_NOT_FOUND: 'This account no longer exists. Please log out and create or use another account.',
 }
 
 function Logo() {
@@ -56,6 +63,16 @@ function readableProfileError(error) {
   return PROFILE_ERROR_MESSAGES[error?.code]
     ?? error?.message
     ?? 'Firebase could not update your profile. Please try again.'
+}
+
+function readableEmailVerificationError(error) {
+  if (error?.name === 'TypeError') {
+    return 'We could not reach Firebase. Check your connection and try again.'
+  }
+
+  return EMAIL_VERIFICATION_ERROR_MESSAGES[error?.code]
+    ?? error?.message
+    ?? 'We could not send the verification email. Please try again.'
 }
 
 function AuthPage() {
@@ -363,12 +380,16 @@ function AccountPage({ user }) {
   const [profile, setProfile] = useState({
     displayName: user.displayName ?? '',
     photoURL: user.photoURL ?? '',
+    emailVerified: Boolean(user.emailVerified),
   })
   const [isProfileLoading, setIsProfileLoading] = useState(true)
   const [profileLoadError, setProfileLoadError] = useState('')
   const [profileRefreshKey, setProfileRefreshKey] = useState(0)
   const [isEditingProfile, setIsEditingProfile] = useState(false)
   const [profileSaved, setProfileSaved] = useState(false)
+  const [isSendingVerification, setIsSendingVerification] = useState(false)
+  const [verificationEmailSent, setVerificationEmailSent] = useState('')
+  const [verificationError, setVerificationError] = useState('')
 
   const isProfileIncomplete = !profile.displayName || !profile.photoURL
 
@@ -396,15 +417,40 @@ function AccountPage({ user }) {
     }
   }, [profileRefreshKey, user])
 
+  useEffect(() => {
+    if (!verificationEmailSent || profile.emailVerified) return undefined
+
+    const refreshVerificationStatus = () => {
+      setProfileRefreshKey((currentKey) => currentKey + 1)
+    }
+
+    window.addEventListener('focus', refreshVerificationStatus)
+    return () => window.removeEventListener('focus', refreshVerificationStatus)
+  }, [profile.emailVerified, verificationEmailSent])
+
   const openProfileForm = () => {
     setProfileSaved(false)
     setIsEditingProfile(true)
   }
 
   const handleProfileUpdated = (updatedProfile) => {
-    setProfile(updatedProfile)
+    setProfile((currentProfile) => ({ ...currentProfile, ...updatedProfile }))
     setProfileSaved(true)
     setIsEditingProfile(false)
+  }
+
+  const handleSendVerificationEmail = async () => {
+    setVerificationError('')
+    setIsSendingVerification(true)
+
+    try {
+      const result = await sendFirebaseEmailVerification(user)
+      setVerificationEmailSent(result.email)
+    } catch (emailVerificationError) {
+      setVerificationError(readableEmailVerificationError(emailVerificationError))
+    } finally {
+      setIsSendingVerification(false)
+    }
   }
 
   return (
@@ -447,6 +493,39 @@ function AccountPage({ user }) {
         </main>
       ) : (
         <main className="dashboard-main">
+          {!profile.emailVerified && (
+            <section className="email-verification-alert" aria-labelledby="email-verification-title">
+              <span className="email-verification-icon" aria-hidden="true">@</span>
+              <div className="email-verification-copy">
+                <h1 id="email-verification-title">Verify your email address</h1>
+                <p>Confirm that <strong>{user.email}</strong> belongs to you and keep your account recoverable.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSendVerificationEmail}
+                disabled={isSendingVerification}
+              >
+                {isSendingVerification
+                  ? 'Sending…'
+                  : verificationEmailSent
+                    ? 'Resend verification email'
+                    : 'Verify email address'}
+              </button>
+
+              {verificationEmailSent && !verificationError && (
+                <div className="email-verification-feedback success-message" role="status">
+                  Check your email at <strong>{verificationEmailSent}</strong>. You might have received a verification link. Click it to verify your email address.
+                </div>
+              )}
+
+              {verificationError && (
+                <div className="email-verification-feedback error-message" role="alert">
+                  {verificationError}
+                </div>
+              )}
+            </section>
+          )}
+
           {isProfileIncomplete && (
             <section className="profile-alert" aria-labelledby="profile-alert-title">
               <span className="profile-alert-icon" aria-hidden="true">!</span>

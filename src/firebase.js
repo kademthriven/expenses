@@ -69,7 +69,19 @@ export async function getFirebaseUserProfile(user) {
   return {
     displayName: account.displayName ?? '',
     photoURL: account.photoUrl ?? '',
+    emailVerified: Boolean(account.emailVerified),
   }
+}
+
+export async function sendFirebaseEmailVerification(user) {
+  const result = await requestFirebaseAccount(
+    user,
+    'accounts:sendOobCode',
+    { requestType: 'VERIFY_EMAIL' },
+    'Firebase could not send the verification email.',
+  )
+
+  return { email: result.email ?? user.email }
 }
 
 export async function updateFirebaseUserProfile(user, { displayName, photoURL }) {
