@@ -899,6 +899,13 @@ form label {
   color: #9cabb8;
 }
 
+.expense-control input:disabled,
+.expense-control select:disabled {
+  color: #7d8d9a;
+  background: #f1f4f5;
+  cursor: wait;
+}
+
 .expense-control input:focus,
 .expense-control select:focus {
   border-color: #0aa27d;
@@ -964,8 +971,23 @@ form label {
   line-height: 1;
 }
 
-.add-expense-button:hover {
+.add-expense-button:not(:disabled):hover {
   background: #0b55d7;
+}
+
+.add-expense-button:disabled {
+  box-shadow: none;
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.add-expense-button .expense-button-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
 }
 
 .expense-form-error {
@@ -1020,6 +1042,56 @@ form label {
 .expenses-empty-state p {
   margin: 7px 0 0;
   font-size: 0.78rem;
+}
+
+.expenses-loading,
+.expenses-load-error {
+  display: grid;
+  min-height: 150px;
+  place-content: center;
+  justify-items: center;
+  padding: 28px 20px;
+  color: #738596;
+  text-align: center;
+}
+
+.expenses-loading p,
+.expenses-load-error p {
+  max-width: 520px;
+  margin: 12px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.expense-loading-spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid #d7e3e8;
+  border-top-color: #0aa27d;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.expenses-load-error {
+  color: #a94651;
+}
+
+.expenses-load-error button {
+  margin-top: 14px;
+  padding: 9px 15px;
+  border: 1px solid #d9e3e7;
+  border-radius: 9px;
+  color: #1f527d;
+  background: #fff;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.expenses-load-error button:hover {
+  border-color: #a7c1d5;
+  background: #f6fafc;
 }
 
 .expense-list {
@@ -1082,7 +1154,8 @@ form label {
   white-space: nowrap;
 }
 
-.add-expense-button:focus-visible {
+.add-expense-button:focus-visible,
+.expenses-load-error button:focus-visible {
   outline: 3px solid rgba(18, 98, 237, 0.3);
   outline-offset: 3px;
 }

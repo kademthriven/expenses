@@ -10,17 +10,82 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
+const realtimeDatabaseURL = import.meta.env.VITE_FIREBASE_DATABASE_URL?.replace(/\/+$/, '')
+
 const requiredConfigValues = ['apiKey', 'authDomain', 'projectId', 'appId']
 const hasFirebaseConfig = requiredConfigValues.every((key) => firebaseConfig[key])
 
 export const firebaseConfigurationError =
   'Firebase is not configured yet. Add your Firebase web app values to a .env.local file and restart the app.'
 
+export const databaseConfigurationError =
+  'Firebase Realtime Database is not configured. Create the database, add VITE_FIREBASE_DATABASE_URL to your environment file, and restart the app.'
+
 const firebaseApp = hasFirebaseConfig
   ? getApps()[0] ?? initializeApp(firebaseConfig)
   : null
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
+
+async function getExpenseCollectionURL(user) {
+  if (!user || !realtimeDatabaseURL) {
+    throw new Error(databaseConfigurationError)
+  }
+
+  const idToken = await user.getIdToken()
+  return `${realtimeDatabaseURL}/expenses/${encodeURIComponent(user.uid)}.json?auth=${encodeURIComponent(idToken)}`
+}
+
+async function readDatabaseResponse(response, fallbackMessage) {
+  const result = await response.json().catch(() => null)
+
+  if (response.status !== 200) {
+    const databaseError = new Error(
+      typeof result?.error === 'string' ? result.error : fallbackMessage,
+    )
+    databaseError.code = response.status
+    throw databaseError
+  }
+
+  return result
+}
+
+export async function createFirebaseExpense(user, expense) {
+  const expenseURL = await getExpenseCollectionURL(user)
+  const response = await fetch(expenseURL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(expense),
+  })
+  const result = await readDatabaseResponse(
+    response,
+    'Firebase could not save the expense.',
+  )
+
+  if (!result?.name) {
+    throw new Error('Firebase saved the expense but did not return its identifier.')
+  }
+
+  return { id: result.name, ...expense }
+}
+
+export async function getFirebaseExpenses(user) {
+  const expenseURL = await getExpenseCollectionURL(user)
+  const response = await fetch(expenseURL, { method: 'GET' })
+  const result = await readDatabaseResponse(
+    response,
+    'Firebase could not load your expenses.',
+  )
+
+  if (!result) return []
+
+  return Object.entries(result)
+    .filter(([, expense]) => expense && typeof expense === 'object')
+    .map(([id, expense]) => ({ id, ...expense }))
+    .sort((firstExpense, secondExpense) => (
+      new Date(secondExpense.addedAt).getTime() - new Date(firstExpense.addedAt).getTime()
+    ))
+}
 
 export async function sendFirebasePasswordResetEmail(email) {
   if (!firebaseConfig.apiKey) {

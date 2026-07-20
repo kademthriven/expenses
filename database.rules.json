@@ -1,0 +1,28 @@
+{
+  "rules": {
+    "expenses": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$expenseId": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['amount', 'description', 'category', 'addedAt'])",
+          "amount": {
+            ".validate": "newData.isNumber() && newData.val() > 0"
+          },
+          "description": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
+          },
+          "category": {
+            ".validate": "newData.isString() && newData.val().length > 0"
+          },
+          "addedAt": {
+            ".validate": "newData.isString()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    }
+  }
+}

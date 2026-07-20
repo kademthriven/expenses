@@ -7,7 +7,9 @@ import {
 } from 'firebase/auth'
 import {
   auth,
+  createFirebaseExpense,
   firebaseConfigurationError,
+  getFirebaseExpenses,
   getFirebaseUserProfile,
   sendFirebaseEmailVerification,
   sendFirebasePasswordResetEmail,
@@ -91,6 +93,26 @@ function readablePasswordResetError(error) {
   return PASSWORD_RESET_ERROR_MESSAGES[error?.code]
     ?? error?.message
     ?? 'We could not send the password reset email. Please try again.'
+}
+
+function readableExpenseError(error) {
+  if (error?.name === 'TypeError') {
+    return 'We could not reach Firebase. Check your connection and try again.'
+  }
+
+  if (error?.code === 401 || error?.code === 403) {
+    return 'Firebase denied access to your expenses. Check the Realtime Database security rules and try again.'
+  }
+
+  if (error?.code === 404) {
+    return 'The Firebase Realtime Database could not be found. Check VITE_FIREBASE_DATABASE_URL and try again.'
+  }
+
+  if (error?.code === 429) {
+    return 'Firebase received too many requests. Wait a moment and try again.'
+  }
+
+  return error?.message ?? 'Firebase could not process your expenses. Please try again.'
 }
 
 function ForgotPasswordForm({ initialEmail, onBackToLogin }) {
@@ -559,16 +581,69 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
   currency: 'USD',
 })
 
-function DailyExpenses() {
+function DailyExpenses({ user }) {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
   const [expenses, setExpenses] = useState([])
   const [expenseError, setExpenseError] = useState('')
+  const [expenseLoadError, setExpenseLoadError] = useState('')
+  const [isLoadingExpenses, setIsLoadingExpenses] = useState(true)
+  const [isSavingExpense, setIsSavingExpense] = useState(false)
+  const [expenseRefreshKey, setExpenseRefreshKey] = useState(0)
+
+  useEffect(() => {
+    let isCurrentRequest = true
+
+    async function loadExpenses() {
+      setIsLoadingExpenses(true)
+      setExpenseLoadError('')
+
+      try {
+        const savedExpenses = await getFirebaseExpenses(user)
+        const normalizedExpenses = savedExpenses
+          .map((expense) => {
+            const expenseAmount = Number(expense.amount)
+            const expenseCategory = EXPENSE_CATEGORIES.find(
+              (item) => item.value === expense.category,
+            ) ?? EXPENSE_CATEGORIES.at(-1)
+            const addedAt = new Date(expense.addedAt)
+
+            if (
+              !Number.isFinite(expenseAmount)
+              || typeof expense.description !== 'string'
+              || Number.isNaN(addedAt.getTime())
+            ) {
+              return null
+            }
+
+            return {
+              ...expense,
+              amount: expenseAmount,
+              category: expenseCategory,
+              addedAt,
+            }
+          })
+          .filter(Boolean)
+
+        if (isCurrentRequest) setExpenses(normalizedExpenses)
+      } catch (loadError) {
+        if (isCurrentRequest) setExpenseLoadError(readableExpenseError(loadError))
+      } finally {
+        if (isCurrentRequest) setIsLoadingExpenses(false)
+      }
+    }
+
+    loadExpenses()
+
+    return () => {
+      isCurrentRequest = false
+    }
+  }, [expenseRefreshKey, user])
 
   const totalSpent = expenses.reduce((total, expense) => total + expense.amount, 0)
 
-  const handleExpenseSubmit = (event) => {
+  const handleExpenseSubmit = async (event) => {
     event.preventDefault()
     const parsedAmount = Number(amount)
     const cleanDescription = description.trim()
@@ -590,19 +665,33 @@ function DailyExpenses() {
       return
     }
 
-    setExpenses((currentExpenses) => [
-      {
-        id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
-        amount: parsedAmount,
+    setIsSavingExpense(true)
+
+    try {
+      const savedExpense = await createFirebaseExpense(user, {
+        amount: Math.round(parsedAmount * 100) / 100,
         description: cleanDescription,
-        category: selectedCategory,
-        addedAt: new Date(),
-      },
-      ...currentExpenses,
-    ])
-    setAmount('')
-    setDescription('')
-    setCategory('')
+        category: selectedCategory.value,
+        addedAt: new Date().toISOString(),
+      })
+
+      setExpenses((currentExpenses) => [
+        {
+          ...savedExpense,
+          category: selectedCategory,
+          addedAt: new Date(savedExpense.addedAt),
+        },
+        ...currentExpenses,
+      ])
+      setExpenseLoadError('')
+      setAmount('')
+      setDescription('')
+      setCategory('')
+    } catch (saveError) {
+      setExpenseError(readableExpenseError(saveError))
+    } finally {
+      setIsSavingExpense(false)
+    }
   }
 
   return (
@@ -633,6 +722,7 @@ function DailyExpenses() {
               step="0.01"
               placeholder="0.00"
               value={amount}
+              disabled={isSavingExpense || isLoadingExpenses}
               onChange={(event) => {
                 setAmount(event.target.value)
                 setExpenseError('')
@@ -652,6 +742,7 @@ function DailyExpenses() {
               maxLength="100"
               placeholder="e.g. Lunch with the team"
               value={description}
+              disabled={isSavingExpense || isLoadingExpenses}
               onChange={(event) => {
                 setDescription(event.target.value)
                 setExpenseError('')
@@ -668,6 +759,7 @@ function DailyExpenses() {
               id="expense-category"
               name="expense-category"
               value={category}
+              disabled={isSavingExpense || isLoadingExpenses}
               onChange={(event) => {
                 setCategory(event.target.value)
                 setExpenseError('')
@@ -682,9 +774,17 @@ function DailyExpenses() {
           </div>
         </div>
 
-        <button className="add-expense-button" type="submit">
-          <span aria-hidden="true">+</span>
-          Add expense
+        <button
+          className="add-expense-button"
+          type="submit"
+          disabled={isSavingExpense || isLoadingExpenses}
+        >
+          {isSavingExpense || isLoadingExpenses ? (
+            <span className="expense-button-spinner" aria-hidden="true" />
+          ) : (
+            <span aria-hidden="true">+</span>
+          )}
+          {isSavingExpense ? 'Saving…' : isLoadingExpenses ? 'Loading…' : 'Add expense'}
         </button>
 
         {expenseError && (
@@ -695,11 +795,27 @@ function DailyExpenses() {
       </form>
 
       <div className="expense-list-heading">
-        <h3>Today’s entries</h3>
-        <span>{expenses.length} {expenses.length === 1 ? 'expense' : 'expenses'}</span>
+        <h3>Saved expenses</h3>
+        <span>
+          {isLoadingExpenses
+            ? 'Loading…'
+            : `${expenses.length} ${expenses.length === 1 ? 'expense' : 'expenses'}`}
+        </span>
       </div>
 
-      {expenses.length === 0 ? (
+      {isLoadingExpenses ? (
+        <div className="expenses-loading" aria-live="polite">
+          <span className="expense-loading-spinner" aria-hidden="true" />
+          <p>Loading your saved expenses…</p>
+        </div>
+      ) : expenseLoadError ? (
+        <div className="expenses-load-error" role="alert">
+          <p>{expenseLoadError}</p>
+          <button type="button" onClick={() => setExpenseRefreshKey((key) => key + 1)}>
+            Try again
+          </button>
+        </div>
+      ) : expenses.length === 0 ? (
         <div className="expenses-empty-state">
           <span aria-hidden="true">$</span>
           <h3>No expenses added yet</h3>
@@ -719,9 +835,9 @@ function DailyExpenses() {
               <div className="expense-details">
                 <strong>{expense.description}</strong>
                 <span>
-                  {expense.category.label} · {expense.addedAt.toLocaleTimeString([], {
-                    hour: 'numeric',
-                    minute: '2-digit',
+                  {expense.category.label} · {expense.addedAt.toLocaleString([], {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
                   })}
                 </span>
               </div>
@@ -942,7 +1058,7 @@ function AccountPage({ user }) {
             </div>
           </section>
 
-          <DailyExpenses />
+          <DailyExpenses user={user} />
         </main>
       )}
     </div>
