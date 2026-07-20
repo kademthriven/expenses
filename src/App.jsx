@@ -76,7 +76,11 @@ function readableEmailVerificationError(error) {
 }
 
 function AuthPage() {
-  const [mode, setMode] = useState('signup')
+  const [mode, setMode] = useState(() => (
+    new URLSearchParams(window.location.search).get('mode') === 'login'
+      ? 'login'
+      : 'signup'
+  ))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -390,6 +394,8 @@ function AccountPage({ user }) {
   const [isSendingVerification, setIsSendingVerification] = useState(false)
   const [verificationEmailSent, setVerificationEmailSent] = useState('')
   const [verificationError, setVerificationError] = useState('')
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
 
   const isProfileIncomplete = !profile.displayName || !profile.photoURL
 
@@ -453,6 +459,23 @@ function AccountPage({ user }) {
     }
   }
 
+  const handleLogout = async () => {
+    setLogoutError('')
+    setIsLoggingOut(true)
+
+    // Remove any app-managed token immediately; Firebase signOut clears the
+    // SDK's persisted authentication state and cached ID token.
+    window.localStorage.removeItem('idToken')
+
+    try {
+      await signOut(auth)
+      window.location.replace('/?mode=login')
+    } catch {
+      setLogoutError('We could not log you out. Please try again.')
+      setIsLoggingOut(false)
+    }
+  }
+
   return (
     <div className="account-page">
       <header className="account-header">
@@ -467,9 +490,20 @@ function AccountPage({ user }) {
               Edit profile
             </button>
           )}
-          <button className="sign-out-button" type="button" onClick={() => signOut(auth)}>Log out</button>
+          <button
+            className="sign-out-button"
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+          >
+            {isLoggingOut ? 'Logging out…' : 'Log out'}
+          </button>
         </div>
       </header>
+
+      {logoutError && (
+        <div className="logout-error" role="alert">{logoutError}</div>
+      )}
 
       {isEditingProfile ? (
         <ProfileForm

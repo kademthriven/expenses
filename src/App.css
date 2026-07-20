@@ -439,6 +439,21 @@ form label {
   background: #f4f8f9;
 }
 
+.sign-out-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.logout-error {
+  width: min(1120px, calc(100% - 64px));
+  margin: 20px auto -26px;
+  padding: 11px 13px;
+  border-radius: 9px;
+  color: #9c313b;
+  background: #fff0f1;
+  font-size: 0.78rem;
+}
+
 .dashboard-main,
 .profile-main {
   width: min(1120px, calc(100% - 64px));
@@ -846,6 +861,11 @@ form label {
   .profile-main {
     width: min(100% - 36px, 640px);
     padding: 34px 0 55px;
+  }
+
+  .logout-error {
+    width: min(100% - 36px, 640px);
+    margin-top: 16px;
   }
 
   .profile-alert {
