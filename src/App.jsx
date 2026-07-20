@@ -1,9 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   createUserWithEmailAndPassword,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
+  signOut,
 } from 'firebase/auth'
-import { auth, firebaseConfigurationError } from './firebase'
+import {
+  auth,
+  firebaseConfigurationError,
+  updateFirebaseUserProfile,
+} from './firebase'
 import './App.css'
 
 const AUTH_ERROR_MESSAGES = {
@@ -15,6 +21,12 @@ const AUTH_ERROR_MESSAGES = {
   'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
   'auth/network-request-failed': 'We could not reach Firebase. Check your connection and try again.',
   'auth/operation-not-allowed': 'Email/password authentication is not enabled for this Firebase project.',
+}
+
+const PROFILE_ERROR_MESSAGES = {
+  INVALID_ID_TOKEN: 'Your session is no longer valid. Please log in again.',
+  TOKEN_EXPIRED: 'Your session has expired. Please log in again.',
+  USER_NOT_FOUND: 'We could not find this account. Please log in again.',
 }
 
 function Logo() {
@@ -35,13 +47,22 @@ function readableAuthError(error) {
   return AUTH_ERROR_MESSAGES[error?.code] ?? 'Something went wrong. Please try again.'
 }
 
-function App() {
+function readableProfileError(error) {
+  if (error?.name === 'TypeError') {
+    return 'We could not reach Firebase. Check your connection and try again.'
+  }
+
+  return PROFILE_ERROR_MESSAGES[error?.code]
+    ?? error?.message
+    ?? 'Firebase could not update your profile. Please try again.'
+}
+
+function AuthPage() {
   const [mode, setMode] = useState('signup')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const isSignup = mode === 'signup'
@@ -51,10 +72,7 @@ function App() {
   const passwordsMatch = !isSignup || password === confirmPassword
   const canSubmit = allFieldsFilled && passwordsMatch && !isSubmitting
 
-  const resetFeedback = () => {
-    setError('')
-    setSuccess('')
-  }
+  const resetFeedback = () => setError('')
 
   const changeMode = () => {
     setMode((currentMode) => (currentMode === 'signup' ? 'login' : 'signup'))
@@ -92,18 +110,11 @@ function App() {
     try {
       if (isSignup) {
         await createUserWithEmailAndPassword(auth, email.trim(), password)
-        console.log('User has successfully signed up.')
-        setSuccess('Your account was created successfully. You are now signed in.')
-        setPassword('')
-        setConfirmPassword('')
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password)
-        setSuccess('Welcome back! You have successfully logged in.')
-        setPassword('')
       }
     } catch (authError) {
       setError(readableAuthError(authError))
-    } finally {
       setIsSubmitting(false)
     }
   }
@@ -215,7 +226,6 @@ function App() {
               )}
 
               {error && <div className="message error-message" role="alert">{error}</div>}
-              {success && <div className="message success-message" role="status">{success}</div>}
 
               <button className="primary-button" type="submit" disabled={!canSubmit}>
                 <span>{isSubmitting ? 'Please wait…' : isSignup ? 'Create account' : 'Log in'}</span>
@@ -233,6 +243,221 @@ function App() {
       </section>
     </main>
   )
+}
+
+function ProfileForm({ user, profile, onCancel, onUpdated }) {
+  const [fullName, setFullName] = useState(profile.displayName)
+  const [photoURL, setPhotoURL] = useState(profile.photoURL)
+  const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    const cleanName = fullName.trim()
+    const cleanPhotoURL = photoURL.trim()
+    setError('')
+
+    if (!cleanName || !cleanPhotoURL) {
+      setError('Please add your full name and a profile photo URL.')
+      return
+    }
+
+    try {
+      const parsedPhotoURL = new URL(cleanPhotoURL)
+      if (!['http:', 'https:'].includes(parsedPhotoURL.protocol)) {
+        throw new Error('Unsupported URL protocol')
+      }
+    } catch {
+      setError('Please enter a valid http or https URL for your profile photo.')
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      const updatedProfile = await updateFirebaseUserProfile(user, {
+        displayName: cleanName,
+        photoURL: cleanPhotoURL,
+      })
+      onUpdated(updatedProfile)
+    } catch (profileError) {
+      setError(readableProfileError(profileError))
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <main className="profile-main">
+      <section className="profile-card" aria-labelledby="profile-title">
+        <div className="profile-card-heading">
+          <span className="eyebrow">CONTACT DETAILS</span>
+          <h1 id="profile-title">Complete your profile</h1>
+          <p>Add the details below so your Pennywise account feels like yours.</p>
+        </div>
+
+        <form className="profile-form" onSubmit={handleSubmit} noValidate>
+          <div className="profile-field">
+            <label htmlFor="full-name">Full name</label>
+            <div className="input-wrap">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4.5 21a7.5 7.5 0 0 1 15 0" />
+              </svg>
+              <input
+                id="full-name"
+                name="full-name"
+                type="text"
+                autoComplete="name"
+                placeholder="Your full name"
+                value={fullName}
+                onChange={(event) => {
+                  setFullName(event.target.value)
+                  setError('')
+                }}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="profile-field">
+            <label htmlFor="photo-url">Profile photo URL</label>
+            <div className="input-wrap">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18M12 3c2.5 2.5 3.7 5.5 3.7 9s-1.2 6.5-3.7 9c-2.5-2.5-3.7-5.5-3.7-9S9.5 5.5 12 3Z" />
+              </svg>
+              <input
+                id="photo-url"
+                name="photo-url"
+                type="url"
+                inputMode="url"
+                placeholder="https://example.com/photo.jpg"
+                value={photoURL}
+                onChange={(event) => {
+                  setPhotoURL(event.target.value)
+                  setError('')
+                }}
+                required
+              />
+            </div>
+          </div>
+
+          {error && <div className="message error-message profile-message" role="alert">{error}</div>}
+
+          <div className="profile-actions">
+            <button className="secondary-button" type="button" onClick={onCancel} disabled={isSubmitting}>
+              Cancel
+            </button>
+            <button className="primary-button profile-update-button" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Updating…' : 'Update profile'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+  )
+}
+
+function AccountPage({ user }) {
+  const [profile, setProfile] = useState({
+    displayName: user.displayName ?? '',
+    photoURL: user.photoURL ?? '',
+  })
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
+  const [profileSaved, setProfileSaved] = useState(false)
+
+  const isProfileIncomplete = !profile.displayName || !profile.photoURL
+
+  const openProfileForm = () => {
+    setProfileSaved(false)
+    setIsEditingProfile(true)
+  }
+
+  const handleProfileUpdated = (updatedProfile) => {
+    setProfile(updatedProfile)
+    setProfileSaved(true)
+    setIsEditingProfile(false)
+  }
+
+  return (
+    <div className="account-page">
+      <header className="account-header">
+        <Logo />
+        <div className="account-actions">
+          {profile.photoURL && (
+            <img className="profile-avatar" src={profile.photoURL} alt="" referrerPolicy="no-referrer" />
+          )}
+          <span className="account-email">{user.email}</span>
+          <button className="sign-out-button" type="button" onClick={() => signOut(auth)}>Log out</button>
+        </div>
+      </header>
+
+      {isEditingProfile ? (
+        <ProfileForm
+          user={user}
+          profile={profile}
+          onCancel={() => setIsEditingProfile(false)}
+          onUpdated={handleProfileUpdated}
+        />
+      ) : (
+        <main className="dashboard-main">
+          {isProfileIncomplete && (
+            <section className="profile-alert" aria-labelledby="profile-alert-title">
+              <span className="profile-alert-icon" aria-hidden="true">!</span>
+              <div className="profile-alert-copy">
+                <h1 id="profile-alert-title">Your profile is incomplete</h1>
+                <p>Add your name and profile photo to finish setting up your account.</p>
+              </div>
+              <button type="button" onClick={openProfileForm}>Complete profile</button>
+            </section>
+          )}
+
+          {profileSaved && (
+            <div className="message success-message dashboard-message" role="status">
+              Your profile has been updated successfully.
+            </div>
+          )}
+
+          <section className="welcome-panel">
+            <div>
+              <span className="eyebrow">YOUR MONEY, MADE CLEAR</span>
+              <h2>Welcome{profile.displayName ? `, ${profile.displayName}` : ''}.</h2>
+              <p>Your Pennywise dashboard is ready whenever you are.</p>
+            </div>
+            <div className="welcome-graphic" aria-hidden="true">
+              <span>$</span>
+            </div>
+          </section>
+        </main>
+      )}
+    </div>
+  )
+}
+
+function App() {
+  const [user, setUser] = useState(null)
+  const [isAuthLoading, setIsAuthLoading] = useState(Boolean(auth))
+
+  useEffect(() => {
+    if (!auth) return undefined
+
+    return onAuthStateChanged(auth, (nextUser) => {
+      setUser(nextUser)
+      setIsAuthLoading(false)
+    })
+  }, [])
+
+  if (isAuthLoading) {
+    return (
+      <main className="loading-page" aria-live="polite">
+        <Logo />
+        <span className="loading-spinner" aria-hidden="true" />
+        <p>Loading your account…</p>
+      </main>
+    )
+  }
+
+  return user ? <AccountPage key={user.uid} user={user} /> : <AuthPage />
 }
 
 export default App

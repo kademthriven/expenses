@@ -21,3 +21,39 @@ const firebaseApp = hasFirebaseConfig
   : null
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
+
+export async function updateFirebaseUserProfile(user, { displayName, photoURL }) {
+  if (!user || !firebaseConfig.apiKey) {
+    throw new Error(firebaseConfigurationError)
+  }
+
+  const idToken = await user.getIdToken()
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idToken,
+        displayName,
+        photoUrl: photoURL,
+        returnSecureToken: true,
+      }),
+    },
+  )
+
+  const result = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    const profileError = new Error('Firebase could not update your profile.')
+    profileError.code = result.error?.message ?? 'PROFILE_UPDATE_FAILED'
+    throw profileError
+  }
+
+  await user.reload()
+
+  return {
+    displayName: result.displayName ?? displayName,
+    photoURL: result.photoUrl ?? photoURL,
+  }
+}
