@@ -27,13 +27,26 @@ const firebaseApp = hasFirebaseConfig
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
 
-async function getExpenseCollectionURL(user) {
+async function getAuthenticatedDatabaseURL(user, path) {
   if (!user || !realtimeDatabaseURL) {
     throw new Error(databaseConfigurationError)
   }
 
   const idToken = await user.getIdToken()
-  return `${realtimeDatabaseURL}/expenses/${encodeURIComponent(user.uid)}.json?auth=${encodeURIComponent(idToken)}`
+  return `${realtimeDatabaseURL}/${path}.json?auth=${encodeURIComponent(idToken)}`
+}
+
+async function getExpenseCollectionURL(user) {
+  return getAuthenticatedDatabaseURL(user, `expenses/${encodeURIComponent(user.uid)}`)
+}
+
+async function getExpenseURL(user, expenseId) {
+  if (!expenseId) throw new Error('The expense identifier is missing.')
+
+  return getAuthenticatedDatabaseURL(
+    user,
+    `expenses/${encodeURIComponent(user.uid)}/${encodeURIComponent(expenseId)}`,
+  )
 }
 
 async function readDatabaseResponse(response, fallbackMessage) {
@@ -85,6 +98,34 @@ export async function getFirebaseExpenses(user) {
     .sort((firstExpense, secondExpense) => (
       new Date(secondExpense.addedAt).getTime() - new Date(firstExpense.addedAt).getTime()
     ))
+}
+
+export async function updateFirebaseExpense(user, expenseId, expense) {
+  const expenseURL = await getExpenseURL(user, expenseId)
+  const response = await fetch(expenseURL, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(expense),
+  })
+  const result = await readDatabaseResponse(
+    response,
+    'Firebase could not update the expense.',
+  )
+
+  if (!result || typeof result !== 'object') {
+    throw new Error('Firebase updated the expense but did not return its values.')
+  }
+
+  return { id: expenseId, ...result }
+}
+
+export async function deleteFirebaseExpense(user, expenseId) {
+  const expenseURL = await getExpenseURL(user, expenseId)
+  const response = await fetch(expenseURL, { method: 'DELETE' })
+  await readDatabaseResponse(
+    response,
+    'Firebase could not delete the expense.',
+  )
 }
 
 export async function sendFirebasePasswordResetEmail(email) {

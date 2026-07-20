@@ -8,11 +8,13 @@ import {
 import {
   auth,
   createFirebaseExpense,
+  deleteFirebaseExpense,
   firebaseConfigurationError,
   getFirebaseExpenses,
   getFirebaseUserProfile,
   sendFirebaseEmailVerification,
   sendFirebasePasswordResetEmail,
+  updateFirebaseExpense,
   updateFirebaseUserProfile,
 } from './firebase'
 import './App.css'
@@ -591,6 +593,10 @@ function DailyExpenses({ user }) {
   const [isLoadingExpenses, setIsLoadingExpenses] = useState(true)
   const [isSavingExpense, setIsSavingExpense] = useState(false)
   const [expenseRefreshKey, setExpenseRefreshKey] = useState(0)
+  const [editingExpense, setEditingExpense] = useState(null)
+  const [isUpdatingExpense, setIsUpdatingExpense] = useState(false)
+  const [deletingExpenseId, setDeletingExpenseId] = useState('')
+  const [expenseActionError, setExpenseActionError] = useState('')
 
   useEffect(() => {
     let isCurrentRequest = true
@@ -691,6 +697,85 @@ function DailyExpenses({ user }) {
       setExpenseError(readableExpenseError(saveError))
     } finally {
       setIsSavingExpense(false)
+    }
+  }
+
+  const startEditingExpense = (expense) => {
+    setExpenseActionError('')
+    setEditingExpense({
+      id: expense.id,
+      amount: String(expense.amount),
+      description: expense.description,
+      category: expense.category.value,
+    })
+  }
+
+  const handleEditExpenseSubmit = async (event, originalExpense) => {
+    event.preventDefault()
+    const parsedAmount = Number(editingExpense.amount)
+    const cleanDescription = editingExpense.description.trim()
+    const selectedCategory = EXPENSE_CATEGORIES.find(
+      (item) => item.value === editingExpense.category,
+    )
+    setExpenseActionError('')
+
+    if (!editingExpense.amount || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setExpenseActionError('Enter an amount greater than zero before submitting the edit.')
+      return
+    }
+
+    if (!cleanDescription) {
+      setExpenseActionError('Add a short description before submitting the edit.')
+      return
+    }
+
+    if (!selectedCategory) {
+      setExpenseActionError('Choose a category before submitting the edit.')
+      return
+    }
+
+    setIsUpdatingExpense(true)
+
+    try {
+      const updatedExpense = await updateFirebaseExpense(user, originalExpense.id, {
+        amount: Math.round(parsedAmount * 100) / 100,
+        description: cleanDescription,
+        category: selectedCategory.value,
+        addedAt: originalExpense.addedAt.toISOString(),
+      })
+
+      setExpenses((currentExpenses) => currentExpenses.map((expense) => (
+        expense.id === originalExpense.id
+          ? {
+              ...updatedExpense,
+              category: selectedCategory,
+              addedAt: new Date(updatedExpense.addedAt),
+            }
+          : expense
+      )))
+      setEditingExpense(null)
+    } catch (updateError) {
+      setExpenseActionError(readableExpenseError(updateError))
+    } finally {
+      setIsUpdatingExpense(false)
+    }
+  }
+
+  const handleDeleteExpense = async (expenseId) => {
+    setExpenseActionError('')
+    setDeletingExpenseId(expenseId)
+
+    try {
+      await deleteFirebaseExpense(user, expenseId)
+      setExpenses((currentExpenses) => (
+        currentExpenses.filter((expense) => expense.id !== expenseId)
+      ))
+      if (editingExpense?.id === expenseId) setEditingExpense(null)
+      console.log('Expense successfuly deleted')
+    } catch (deleteError) {
+      setExpenseActionError(readableExpenseError(deleteError))
+    } finally {
+      setDeletingExpenseId('')
     }
   }
 
@@ -803,6 +888,12 @@ function DailyExpenses({ user }) {
         </span>
       </div>
 
+      {expenseActionError && (
+        <div className="message error-message expense-action-error" role="alert">
+          {expenseActionError}
+        </div>
+      )}
+
       {isLoadingExpenses ? (
         <div className="expenses-loading" aria-live="polite">
           <span className="expense-loading-spinner" aria-hidden="true" />
@@ -824,24 +915,155 @@ function DailyExpenses({ user }) {
       ) : (
         <ul className="expense-list">
           {expenses.map((expense) => (
-            <li key={expense.id}>
-              <span
-                className="expense-category-icon"
-                style={{ '--category-color': expense.category.color }}
-                aria-hidden="true"
-              >
-                {expense.category.icon}
-              </span>
-              <div className="expense-details">
-                <strong>{expense.description}</strong>
-                <span>
-                  {expense.category.label} · {expense.addedAt.toLocaleString([], {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  })}
-                </span>
-              </div>
-              <strong className="expense-amount">−{currencyFormatter.format(expense.amount)}</strong>
+            <li
+              className={editingExpense?.id === expense.id ? 'expense-editing-row' : ''}
+              key={expense.id}
+            >
+              {editingExpense?.id === expense.id ? (
+                <form
+                  className="expense-edit-form"
+                  onSubmit={(event) => handleEditExpenseSubmit(event, expense)}
+                  noValidate
+                >
+                  <div className="expense-field">
+                    <label htmlFor={`edit-expense-amount-${expense.id}`}>Money spent</label>
+                    <div className="expense-control amount-control">
+                      <span aria-hidden="true">$</span>
+                      <input
+                        id={`edit-expense-amount-${expense.id}`}
+                        type="number"
+                        inputMode="decimal"
+                        min="0.01"
+                        step="0.01"
+                        value={editingExpense.amount}
+                        disabled={isUpdatingExpense}
+                        onChange={(event) => {
+                          setEditingExpense((currentExpense) => ({
+                            ...currentExpense,
+                            amount: event.target.value,
+                          }))
+                          setExpenseActionError('')
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="expense-field">
+                    <label htmlFor={`edit-expense-description-${expense.id}`}>Description</label>
+                    <div className="expense-control">
+                      <input
+                        id={`edit-expense-description-${expense.id}`}
+                        type="text"
+                        maxLength="100"
+                        value={editingExpense.description}
+                        disabled={isUpdatingExpense}
+                        onChange={(event) => {
+                          setEditingExpense((currentExpense) => ({
+                            ...currentExpense,
+                            description: event.target.value,
+                          }))
+                          setExpenseActionError('')
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="expense-field">
+                    <label htmlFor={`edit-expense-category-${expense.id}`}>Category</label>
+                    <div className="expense-control select-control">
+                      <select
+                        id={`edit-expense-category-${expense.id}`}
+                        value={editingExpense.category}
+                        disabled={isUpdatingExpense}
+                        onChange={(event) => {
+                          setEditingExpense((currentExpense) => ({
+                            ...currentExpense,
+                            category: event.target.value,
+                          }))
+                          setExpenseActionError('')
+                        }}
+                        required
+                      >
+                        <option value="">Choose category</option>
+                        {EXPENSE_CATEGORIES.map((item) => (
+                          <option key={item.value} value={item.value}>{item.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="expense-edit-actions">
+                    <button
+                      className="expense-cancel-button"
+                      type="button"
+                      disabled={isUpdatingExpense}
+                      onClick={() => {
+                        setEditingExpense(null)
+                        setExpenseActionError('')
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="expense-submit-edit-button"
+                      type="submit"
+                      disabled={isUpdatingExpense}
+                    >
+                      {isUpdatingExpense ? 'Updating…' : 'Submit'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <span
+                    className="expense-category-icon"
+                    style={{ '--category-color': expense.category.color }}
+                    aria-hidden="true"
+                  >
+                    {expense.category.icon}
+                  </span>
+                  <div className="expense-details">
+                    <strong>{expense.description}</strong>
+                    <span>
+                      {expense.category.label} · {expense.addedAt.toLocaleString([], {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </span>
+                  </div>
+                  <strong className="expense-amount">
+                    −{currencyFormatter.format(expense.amount)}
+                  </strong>
+                  <div className="expense-row-actions">
+                    <button
+                      className="expense-edit-button"
+                      type="button"
+                      disabled={
+                        isUpdatingExpense
+                        || Boolean(deletingExpenseId)
+                        || Boolean(editingExpense)
+                      }
+                      onClick={() => startEditingExpense(expense)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="expense-delete-button"
+                      type="button"
+                      disabled={
+                        isUpdatingExpense
+                        || Boolean(deletingExpenseId)
+                        || Boolean(editingExpense)
+                      }
+                      onClick={() => handleDeleteExpense(expense.id)}
+                    >
+                      {deletingExpenseId === expense.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
+                </>
+              )}
             </li>
           ))}
         </ul>
