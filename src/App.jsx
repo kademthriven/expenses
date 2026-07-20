@@ -10,6 +10,7 @@ import {
   firebaseConfigurationError,
   getFirebaseUserProfile,
   sendFirebaseEmailVerification,
+  sendFirebasePasswordResetEmail,
   updateFirebaseUserProfile,
 } from './firebase'
 import './App.css'
@@ -35,6 +36,13 @@ const EMAIL_VERIFICATION_ERROR_MESSAGES = {
   INVALID_ID_TOKEN: 'Your session is no longer valid. Log out, then log in again before requesting a new verification email.',
   TOKEN_EXPIRED: 'Your session has expired. Log out, then log in again before requesting a new verification email.',
   USER_NOT_FOUND: 'This account no longer exists. Please log out and create or use another account.',
+}
+
+const PASSWORD_RESET_ERROR_MESSAGES = {
+  EMAIL_NOT_FOUND: 'We could not find an account registered with that email address.',
+  INVALID_EMAIL: 'Please enter a valid email address.',
+  USER_DISABLED: 'This account has been disabled. Please contact support.',
+  TOO_MANY_ATTEMPTS_TRY_LATER: 'Too many reset requests were made. Please wait a moment and try again.',
 }
 
 function Logo() {
@@ -75,12 +83,124 @@ function readableEmailVerificationError(error) {
     ?? 'We could not send the verification email. Please try again.'
 }
 
+function readablePasswordResetError(error) {
+  if (error?.name === 'TypeError') {
+    return 'We could not reach Firebase. Check your connection and try again.'
+  }
+
+  return PASSWORD_RESET_ERROR_MESSAGES[error?.code]
+    ?? error?.message
+    ?? 'We could not send the password reset email. Please try again.'
+}
+
+function ForgotPasswordForm({ initialEmail, onBackToLogin }) {
+  const [resetEmail, setResetEmail] = useState(initialEmail)
+  const [resetError, setResetError] = useState('')
+  const [sentToEmail, setSentToEmail] = useState('')
+  const [isSendingReset, setIsSendingReset] = useState(false)
+
+  const handleResetSubmit = async (event) => {
+    event.preventDefault()
+    const cleanEmail = resetEmail.trim()
+    setResetError('')
+
+    if (!cleanEmail) {
+      setResetError('Please enter the email address registered to your account.')
+      return
+    }
+
+    if (!/^\S+@\S+\.\S+$/.test(cleanEmail)) {
+      setResetError('Please enter a valid email address.')
+      return
+    }
+
+    setIsSendingReset(true)
+
+    try {
+      const result = await sendFirebasePasswordResetEmail(cleanEmail)
+      setSentToEmail(result.email)
+    } catch (passwordResetError) {
+      setResetError(readablePasswordResetError(passwordResetError))
+    } finally {
+      setIsSendingReset(false)
+    }
+  }
+
+  if (sentToEmail) {
+    return (
+      <div className="reset-success" role="status">
+        <span className="reset-success-icon" aria-hidden="true">✓</span>
+        <h3>Check your email</h3>
+        <p>
+          A password reset link was sent to <strong>{sentToEmail}</strong>. Open the link,
+          choose a new password, then return here to log in.
+        </p>
+        <button className="primary-button" type="button" onClick={onBackToLogin}>
+          Back to login
+        </button>
+        <button
+          className="reset-text-button"
+          type="button"
+          onClick={() => setSentToEmail('')}
+        >
+          Send another link
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <form className="reset-form" onSubmit={handleResetSubmit} noValidate>
+        <label htmlFor="reset-email">Email</label>
+        <div className="input-wrap">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m3.5 6.5 8.5 6 8.5-6M5 19h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2Z" />
+          </svg>
+          <input
+            id="reset-email"
+            name="reset-email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            value={resetEmail}
+            onChange={(event) => {
+              setResetEmail(event.target.value)
+              setResetError('')
+            }}
+            disabled={isSendingReset}
+            required
+          />
+        </div>
+
+        {resetError && <div className="message error-message" role="alert">{resetError}</div>}
+
+        <button className="primary-button" type="submit" disabled={isSendingReset}>
+          <span>{isSendingReset ? 'Sending link…' : 'Send reset link'}</span>
+          {!isSendingReset && <span aria-hidden="true">→</span>}
+        </button>
+      </form>
+
+      <p className="switch-mode reset-login-link">
+        Remembered your password?{' '}
+        <button type="button" onClick={onBackToLogin}>Log in</button>
+      </p>
+
+      {isSendingReset && (
+        <div className="reset-loader-overlay" role="status" aria-live="polite">
+          <span className="loading-spinner" aria-hidden="true" />
+          <p>Requesting your reset link…</p>
+        </div>
+      )}
+    </>
+  )
+}
+
 function AuthPage() {
-  const [mode, setMode] = useState(() => (
-    new URLSearchParams(window.location.search).get('mode') === 'login'
-      ? 'login'
-      : 'signup'
-  ))
+  const [mode, setMode] = useState(() => {
+    const requestedMode = new URLSearchParams(window.location.search).get('mode')
+    return ['login', 'forgot'].includes(requestedMode) ? requestedMode : 'signup'
+  })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -88,6 +208,7 @@ function AuthPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const isSignup = mode === 'signup'
+  const isForgotPassword = mode === 'forgot'
   const allFieldsFilled = Boolean(
     email.trim() && password && (!isSignup || confirmPassword),
   )
@@ -97,10 +218,27 @@ function AuthPage() {
   const resetFeedback = () => setError('')
 
   const changeMode = () => {
-    setMode((currentMode) => (currentMode === 'signup' ? 'login' : 'signup'))
+    const nextMode = isSignup ? 'login' : 'signup'
+    setMode(nextMode)
     setPassword('')
     setConfirmPassword('')
     resetFeedback()
+    window.history.replaceState(null, '', nextMode === 'login' ? '/?mode=login' : '/')
+  }
+
+  const showForgotPassword = () => {
+    setMode('forgot')
+    setPassword('')
+    resetFeedback()
+    window.history.replaceState(null, '', '/?mode=forgot')
+  }
+
+  const showLogin = () => {
+    setMode('login')
+    setPassword('')
+    setConfirmPassword('')
+    resetFeedback()
+    window.history.replaceState(null, '', '/?mode=login')
   }
 
   const handleSubmit = async (event) => {
@@ -168,12 +306,28 @@ function AuthPage() {
         <div className="auth-wrap">
           <div className="auth-card">
             <div className="card-heading">
-              <span className="card-icon" aria-hidden="true">↗</span>
-              <h2 id="auth-title">{isSignup ? 'Create your account' : 'Welcome back'}</h2>
-              <p>{isSignup ? 'Start tracking your money in minutes.' : 'Log in to continue to Pennywise.'}</p>
+              <span className="card-icon" aria-hidden="true">{isForgotPassword ? '?' : '↗'}</span>
+              <h2 id="auth-title">
+                {isForgotPassword
+                  ? 'Reset your password'
+                  : isSignup
+                    ? 'Create your account'
+                    : 'Welcome back'}
+              </h2>
+              <p>
+                {isForgotPassword
+                  ? 'Enter the email address registered to your account.'
+                  : isSignup
+                    ? 'Start tracking your money in minutes.'
+                    : 'Log in to continue to Pennywise.'}
+              </p>
             </div>
 
-            <form onSubmit={handleSubmit} noValidate>
+            {isForgotPassword ? (
+              <ForgotPasswordForm initialEmail={email} onBackToLogin={showLogin} />
+            ) : (
+              <>
+                <form onSubmit={handleSubmit} noValidate>
               <label htmlFor="email">Email</label>
               <div className="input-wrap">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -216,6 +370,12 @@ function AuthPage() {
                 />
               </div>
 
+              {!isSignup && (
+                <div className="forgot-password-row">
+                  <button type="button" onClick={showForgotPassword}>Forgot password?</button>
+                </div>
+              )}
+
               {isSignup && (
                 <>
                   <label htmlFor="confirm-password">Confirm password</label>
@@ -253,12 +413,14 @@ function AuthPage() {
                 <span>{isSubmitting ? 'Please wait…' : isSignup ? 'Create account' : 'Log in'}</span>
                 {!isSubmitting && <span aria-hidden="true">→</span>}
               </button>
-            </form>
+                </form>
 
-            <p className="switch-mode">
-              {isSignup ? 'Already have an account?' : 'New to Pennywise?'}{' '}
-              <button type="button" onClick={changeMode}>{isSignup ? 'Log in' : 'Create an account'}</button>
-            </p>
+                <p className="switch-mode">
+                  {isSignup ? 'Already have an account?' : 'New to Pennywise?'}{' '}
+                  <button type="button" onClick={changeMode}>{isSignup ? 'Log in' : 'Create an account'}</button>
+                </p>
+              </>
+            )}
           </div>
           <p className="privacy-note">Protected by Firebase Authentication</p>
         </div>

@@ -22,6 +22,34 @@ const firebaseApp = hasFirebaseConfig
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
 
+export async function sendFirebasePasswordResetEmail(email) {
+  if (!firebaseConfig.apiKey) {
+    throw new Error(firebaseConfigurationError)
+  }
+
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestType: 'PASSWORD_RESET',
+        email,
+      }),
+    },
+  )
+
+  const result = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    const resetError = new Error('Firebase could not send the password reset email.')
+    resetError.code = result.error?.message ?? 'PASSWORD_RESET_REQUEST_FAILED'
+    throw resetError
+  }
+
+  return { email: result.email ?? email }
+}
+
 async function requestFirebaseAccount(user, endpoint, payload, errorMessage) {
   if (!user || !firebaseConfig.apiKey) {
     throw new Error(firebaseConfigurationError)

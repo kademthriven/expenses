@@ -159,6 +159,7 @@
 }
 
 .auth-card {
+  position: relative;
   padding: 41px 43px 32px;
   border: 1px solid rgba(26, 65, 96, 0.08);
   border-radius: 26px;
@@ -263,6 +264,31 @@ form label {
   font-size: 0.76rem;
 }
 
+.forgot-password-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: -8px 0 18px;
+}
+
+.forgot-password-row button,
+.reset-text-button {
+  padding: 0;
+  border: 0;
+  color: #0b8c70;
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.forgot-password-row button:hover,
+.reset-text-button:hover {
+  color: #08705a;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .message {
   margin: 0 0 17px;
   padding: 11px 13px;
@@ -344,6 +370,74 @@ form label {
   color: rgba(72, 99, 122, 0.66);
   font-size: 0.7rem;
   text-align: center;
+}
+
+.reset-form .input-wrap {
+  margin-bottom: 18px;
+}
+
+.reset-login-link {
+  margin-top: 22px;
+}
+
+.reset-success {
+  text-align: center;
+}
+
+.reset-success-icon {
+  display: inline-grid;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 16px;
+  place-items: center;
+  border-radius: 16px;
+  color: #08725a;
+  background: #e3f7f0;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.reset-success h3 {
+  margin: 0;
+  color: #102945;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+}
+
+.reset-success p {
+  margin: 12px 0 24px;
+  color: #687d90;
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+
+.reset-text-button {
+  margin-top: 18px;
+}
+
+.reset-loader-overlay {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  border-radius: 26px;
+  color: #29445d;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(4px);
+}
+
+.reset-loader-overlay p {
+  margin: 14px 0 0;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.forgot-password-row button:focus-visible,
+.reset-text-button:focus-visible {
+  outline: 3px solid rgba(18, 98, 237, 0.3);
+  outline-offset: 3px;
 }
 
 .loading-page {
