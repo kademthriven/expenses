@@ -22,22 +22,20 @@ const firebaseApp = hasFirebaseConfig
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
 
-export async function updateFirebaseUserProfile(user, { displayName, photoURL }) {
+async function requestFirebaseAccount(user, endpoint, payload, errorMessage) {
   if (!user || !firebaseConfig.apiKey) {
     throw new Error(firebaseConfigurationError)
   }
 
   const idToken = await user.getIdToken()
   const response = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+    `https://identitytoolkit.googleapis.com/v1/${endpoint}?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         idToken,
-        displayName,
-        photoUrl: photoURL,
-        returnSecureToken: true,
+        ...payload,
       }),
     },
   )
@@ -45,10 +43,46 @@ export async function updateFirebaseUserProfile(user, { displayName, photoURL })
   const result = await response.json().catch(() => ({}))
 
   if (!response.ok) {
-    const profileError = new Error('Firebase could not update your profile.')
-    profileError.code = result.error?.message ?? 'PROFILE_UPDATE_FAILED'
+    const profileError = new Error(errorMessage)
+    profileError.code = result.error?.message ?? 'FIREBASE_ACCOUNT_REQUEST_FAILED'
     throw profileError
   }
+
+  return result
+}
+
+export async function getFirebaseUserProfile(user) {
+  const result = await requestFirebaseAccount(
+    user,
+    'accounts:lookup',
+    {},
+    'Firebase could not load your account details.',
+  )
+  const account = result.users?.[0]
+
+  if (!account) {
+    const profileError = new Error('Firebase could not find your account details.')
+    profileError.code = 'USER_NOT_FOUND'
+    throw profileError
+  }
+
+  return {
+    displayName: account.displayName ?? '',
+    photoURL: account.photoUrl ?? '',
+  }
+}
+
+export async function updateFirebaseUserProfile(user, { displayName, photoURL }) {
+  const result = await requestFirebaseAccount(
+    user,
+    'accounts:update',
+    {
+      displayName,
+      photoUrl: photoURL,
+      returnSecureToken: true,
+    },
+    'Firebase could not update your profile.',
+  )
 
   await user.reload()
 

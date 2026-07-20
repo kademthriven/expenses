@@ -8,6 +8,7 @@ import {
 import {
   auth,
   firebaseConfigurationError,
+  getFirebaseUserProfile,
   updateFirebaseUserProfile,
 } from './firebase'
 import './App.css'
@@ -363,10 +364,37 @@ function AccountPage({ user }) {
     displayName: user.displayName ?? '',
     photoURL: user.photoURL ?? '',
   })
+  const [isProfileLoading, setIsProfileLoading] = useState(true)
+  const [profileLoadError, setProfileLoadError] = useState('')
+  const [profileRefreshKey, setProfileRefreshKey] = useState(0)
   const [isEditingProfile, setIsEditingProfile] = useState(false)
   const [profileSaved, setProfileSaved] = useState(false)
 
   const isProfileIncomplete = !profile.displayName || !profile.photoURL
+
+  useEffect(() => {
+    let isCurrentRequest = true
+
+    const loadSavedProfile = async () => {
+      setIsProfileLoading(true)
+      setProfileLoadError('')
+
+      try {
+        const savedProfile = await getFirebaseUserProfile(user)
+        if (isCurrentRequest) setProfile(savedProfile)
+      } catch (profileError) {
+        if (isCurrentRequest) setProfileLoadError(readableProfileError(profileError))
+      } finally {
+        if (isCurrentRequest) setIsProfileLoading(false)
+      }
+    }
+
+    loadSavedProfile()
+
+    return () => {
+      isCurrentRequest = false
+    }
+  }, [profileRefreshKey, user])
 
   const openProfileForm = () => {
     setProfileSaved(false)
@@ -388,6 +416,11 @@ function AccountPage({ user }) {
             <img className="profile-avatar" src={profile.photoURL} alt="" referrerPolicy="no-referrer" />
           )}
           <span className="account-email">{user.email}</span>
+          {!isProfileLoading && !profileLoadError && !isProfileIncomplete && (
+            <button className="edit-profile-button" type="button" onClick={openProfileForm}>
+              Edit profile
+            </button>
+          )}
           <button className="sign-out-button" type="button" onClick={() => signOut(auth)}>Log out</button>
         </div>
       </header>
@@ -399,6 +432,19 @@ function AccountPage({ user }) {
           onCancel={() => setIsEditingProfile(false)}
           onUpdated={handleProfileUpdated}
         />
+      ) : isProfileLoading ? (
+        <main className="profile-state-main" aria-live="polite">
+          <span className="loading-spinner" aria-hidden="true" />
+          <p>Loading your saved profile…</p>
+        </main>
+      ) : profileLoadError ? (
+        <main className="profile-state-main profile-load-error" role="alert">
+          <h1>We couldn’t load your profile</h1>
+          <p>{profileLoadError}</p>
+          <button type="button" onClick={() => setProfileRefreshKey((currentKey) => currentKey + 1)}>
+            Try again
+          </button>
+        </main>
       ) : (
         <main className="dashboard-main">
           {isProfileIncomplete && (

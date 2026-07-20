@@ -417,6 +417,7 @@ form label {
 }
 
 .sign-out-button,
+.edit-profile-button,
 .secondary-button {
   min-height: 40px;
   padding: 0 17px;
@@ -432,6 +433,7 @@ form label {
 }
 
 .sign-out-button:hover,
+.edit-profile-button:hover,
 .secondary-button:hover:not(:disabled) {
   border-color: #bccbd2;
   background: #f4f8f9;
@@ -442,6 +444,48 @@ form label {
   width: min(1120px, calc(100% - 64px));
   margin: 0 auto;
   padding: 52px 0 80px;
+}
+
+.profile-state-main {
+  display: grid;
+  width: min(560px, calc(100% - 40px));
+  min-height: calc(100svh - 88px);
+  margin: 0 auto;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.profile-state-main > p {
+  margin: 15px 0 0;
+  color: #657b8f;
+  font-size: 0.86rem;
+}
+
+.profile-load-error h1 {
+  margin: 0;
+  color: #102945;
+  font-size: 1.45rem;
+  letter-spacing: -0.025em;
+}
+
+.profile-load-error p {
+  max-width: 440px;
+  line-height: 1.55;
+}
+
+.profile-load-error button {
+  min-height: 43px;
+  margin-top: 22px;
+  padding: 0 19px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: #1262ed;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 750;
+  cursor: pointer;
 }
 
 .profile-alert {
@@ -653,6 +697,8 @@ form label {
 
 .profile-alert button:focus-visible,
 .sign-out-button:focus-visible,
+.edit-profile-button:focus-visible,
+.profile-load-error button:focus-visible,
 .secondary-button:focus-visible {
   outline: 3px solid rgba(18, 98, 237, 0.28);
   outline-offset: 3px;
