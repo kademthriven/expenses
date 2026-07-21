@@ -26,6 +26,12 @@ import {
   selectExpensesState,
   selectTotalSpent,
 } from './store/expensesSlice'
+import {
+  activatePremium,
+  resetTheme,
+  selectTheme,
+  toggleTheme,
+} from './store/themeSlice'
 import './App.css'
 
 const AUTH_ERROR_MESSAGES = {
@@ -572,6 +578,38 @@ const currencyFormatter = new Intl.NumberFormat('en-IN', {
   currency: 'INR',
 })
 
+function escapeCsvCell(value) {
+  let safeValue = String(value ?? '')
+
+  // Prevent spreadsheet programs from interpreting user-entered text as a formula.
+  if (/^[=+\-@]/.test(safeValue)) safeValue = `'${safeValue}`
+
+  return `"${safeValue.replaceAll('"', '""')}"`
+}
+
+function downloadExpensesCsv(expenses) {
+  const rows = expenses.map((expense) => [
+    expense.addedAt,
+    expense.description,
+    expense.category,
+    Number(expense.amount).toFixed(2),
+  ])
+  const csv = [
+    ['Date', 'Description', 'Category', 'Amount (INR)'],
+    ...rows,
+  ].map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+  const file = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' })
+  const downloadUrl = URL.createObjectURL(file)
+  const link = document.createElement('a')
+
+  link.href = downloadUrl
+  link.download = `pennywise-expenses-${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(downloadUrl)
+}
+
 function DailyExpenses() {
   const dispatch = useDispatch()
   const {
@@ -586,6 +624,7 @@ function DailyExpenses() {
   } = useSelector(selectExpensesState)
   const totalSpent = useSelector(selectTotalSpent)
   const canActivatePremium = useSelector(selectCanActivatePremium)
+  const { isPremiumActivated, mode: themeMode } = useSelector(selectTheme)
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
@@ -723,10 +762,36 @@ function DailyExpenses() {
             <span>Recorded total</span>
             <strong>{currencyFormatter.format(totalSpent)}</strong>
           </div>
-          {canActivatePremium && (
-            <button className="activate-premium-button" type="button">
+          {canActivatePremium && !isPremiumActivated && (
+            <button
+              className="activate-premium-button"
+              type="button"
+              onClick={() => dispatch(activatePremium())}
+            >
               Activate Premium
             </button>
+          )}
+          {isPremiumActivated && (
+            <div className="premium-controls" aria-label="Premium controls">
+              <button
+                className="theme-toggle-button"
+                type="button"
+                aria-pressed={themeMode === 'dark'}
+                onClick={() => dispatch(toggleTheme())}
+              >
+                <span className="theme-toggle-track" aria-hidden="true">
+                  <span />
+                </span>
+                <span>{themeMode === 'dark' ? 'Use light theme' : 'Use dark theme'}</span>
+              </button>
+              <button
+                className="download-expenses-button"
+                type="button"
+                onClick={() => downloadExpensesCsv(storedExpenses)}
+              >
+                Download expenses CSV
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1225,6 +1290,11 @@ function AccountPage({ user }) {
 function App() {
   const dispatch = useDispatch()
   const { isLoggedIn, isLoading: isAuthLoading, userId } = useSelector(selectAuth)
+  const { mode: themeMode } = useSelector(selectTheme)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode
+  }, [themeMode])
 
   useEffect(() => {
     if (!auth) {
@@ -1240,6 +1310,7 @@ function App() {
       if (!nextUser) {
         dispatch(clearCredentials())
         dispatch(resetExpenses())
+        dispatch(resetTheme())
         return
       }
 
@@ -1256,6 +1327,7 @@ function App() {
         if (currentVersion !== callbackVersion) return
         dispatch(clearCredentials())
         dispatch(resetExpenses())
+        dispatch(resetTheme())
       }
     })
   }, [dispatch])

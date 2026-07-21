@@ -885,6 +885,77 @@ form label {
   outline-offset: 3px;
 }
 
+.premium-controls {
+  display: grid;
+  width: 100%;
+  gap: 9px;
+}
+
+.theme-toggle-button,
+.download-expenses-button {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 8px 13px;
+  border: 1px solid #d7ddea;
+  border-radius: 11px;
+  color: #33485f;
+  background: #fff;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.download-expenses-button {
+  border-color: #7257d9;
+  color: #fff;
+  background: #7257d9;
+}
+
+.theme-toggle-button:hover,
+.download-expenses-button:hover {
+  transform: translateY(-1px);
+}
+
+.theme-toggle-track {
+  position: relative;
+  width: 34px;
+  height: 19px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #c5cfda;
+  transition: background 160ms ease;
+}
+
+.theme-toggle-track > span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(16, 41, 69, 0.25);
+  transition: transform 160ms ease;
+}
+
+.theme-toggle-button[aria-pressed='true'] .theme-toggle-track {
+  background: #8d72ec;
+}
+
+.theme-toggle-button[aria-pressed='true'] .theme-toggle-track > span {
+  transform: translateX(15px);
+}
+
+.theme-toggle-button:focus-visible,
+.download-expenses-button:focus-visible {
+  outline: 3px solid rgba(114, 87, 217, 0.28);
+  outline-offset: 3px;
+}
+
 .expense-form {
   display: grid;
   grid-template-columns: minmax(140px, 0.75fr) minmax(230px, 1.45fr) minmax(175px, 0.9fr) auto;
@@ -1358,6 +1429,184 @@ form label {
 .secondary-button:focus-visible {
   outline: 3px solid rgba(18, 98, 237, 0.28);
   outline-offset: 3px;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  background: #07111f;
+}
+
+html[data-theme='dark'] body {
+  color: #dbe7f3;
+  background: #07111f;
+}
+
+html[data-theme='dark'] .account-page {
+  background:
+    radial-gradient(circle at 100% 0, rgba(106, 92, 229, 0.16), transparent 32rem),
+    #07111f;
+}
+
+html[data-theme='dark'] .account-header {
+  border-color: #243246;
+  background: rgba(10, 22, 38, 0.9);
+}
+
+html[data-theme='dark'] .account-header .brand,
+html[data-theme='dark'] .account-email,
+html[data-theme='dark'] .profile-state-main > p {
+  color: #b8c8d9;
+}
+
+html[data-theme='dark'] .sign-out-button,
+html[data-theme='dark'] .edit-profile-button,
+html[data-theme='dark'] .secondary-button,
+html[data-theme='dark'] .expense-row-actions button,
+html[data-theme='dark'] .expense-edit-actions button,
+html[data-theme='dark'] .expenses-load-error button,
+html[data-theme='dark'] .theme-toggle-button {
+  border-color: #34445b;
+  color: #d9e7f5;
+  background: #142238;
+}
+
+html[data-theme='dark'] .sign-out-button:hover,
+html[data-theme='dark'] .edit-profile-button:hover,
+html[data-theme='dark'] .secondary-button:hover:not(:disabled),
+html[data-theme='dark'] .expense-row-actions button:not(:disabled):hover,
+html[data-theme='dark'] .expense-edit-actions button:not(:disabled):hover,
+html[data-theme='dark'] .expenses-load-error button:hover,
+html[data-theme='dark'] .theme-toggle-button:hover {
+  border-color: #52657e;
+  background: #1a2b43;
+}
+
+html[data-theme='dark'] .welcome-panel,
+html[data-theme='dark'] .expenses-panel,
+html[data-theme='dark'] .profile-card {
+  border-color: #26364b;
+  background: #0f1d30;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
+
+html[data-theme='dark'] .welcome-panel::before {
+  background: #5e54d9;
+}
+
+html[data-theme='dark'] .welcome-panel h2,
+html[data-theme='dark'] .expenses-heading h2,
+html[data-theme='dark'] .expense-list-heading h3,
+html[data-theme='dark'] .expense-details strong,
+html[data-theme='dark'] .expenses-empty-state h3,
+html[data-theme='dark'] .profile-card-heading h1,
+html[data-theme='dark'] .profile-load-error h1 {
+  color: #eef5fc;
+}
+
+html[data-theme='dark'] .welcome-panel p,
+html[data-theme='dark'] .expenses-heading p,
+html[data-theme='dark'] .expense-list-heading > span,
+html[data-theme='dark'] .expense-details span,
+html[data-theme='dark'] .expenses-empty-state,
+html[data-theme='dark'] .expenses-loading,
+html[data-theme='dark'] .profile-card-heading p {
+  color: #99acc0;
+}
+
+html[data-theme='dark'] .expense-form,
+html[data-theme='dark'] .expense-list li.expense-editing-row {
+  border-color: #2b3b50;
+  background: #0a1728;
+}
+
+html[data-theme='dark'] .expense-field label,
+html[data-theme='dark'] .profile-field label {
+  color: #c5d5e5;
+}
+
+html[data-theme='dark'] .expense-control input,
+html[data-theme='dark'] .expense-control select,
+html[data-theme='dark'] .input-wrap input {
+  border-color: #34465e;
+  color: #edf5fc;
+  background: #142238;
+}
+
+html[data-theme='dark'] .expense-control input::placeholder,
+html[data-theme='dark'] .input-wrap input::placeholder {
+  color: #70849a;
+}
+
+html[data-theme='dark'] .expense-control input:disabled,
+html[data-theme='dark'] .expense-control select:disabled {
+  color: #8295a9;
+  background: #101c2d;
+}
+
+html[data-theme='dark'] .expense-list-heading,
+html[data-theme='dark'] .expense-list li,
+html[data-theme='dark'] .profile-actions {
+  border-color: #29394e;
+}
+
+html[data-theme='dark'] .expense-total {
+  color: #70e1be;
+  background: #12382f;
+}
+
+html[data-theme='dark'] .expense-total span {
+  color: #91c8b6;
+}
+
+html[data-theme='dark'] .email-verification-alert {
+  border-color: #2c4970;
+  background: #102844;
+}
+
+html[data-theme='dark'] .email-verification-icon {
+  color: #80aefc;
+  background: #162f50;
+}
+
+html[data-theme='dark'] .email-verification-copy h1 {
+  color: #dceaff;
+}
+
+html[data-theme='dark'] .email-verification-copy p {
+  color: #9eb5d1;
+}
+
+html[data-theme='dark'] .profile-alert {
+  border-color: #5a3d48;
+  background: #32232c;
+}
+
+html[data-theme='dark'] .profile-alert-icon {
+  color: #f0a7ae;
+  background: #452b36;
+}
+
+html[data-theme='dark'] .profile-alert-copy h1 {
+  color: #f7e3e8;
+}
+
+html[data-theme='dark'] .profile-alert-copy p {
+  color: #c5aab3;
+}
+
+html[data-theme='dark'] .expenses-empty-state > span {
+  color: #77dfc0;
+  background: #12382f;
+}
+
+html[data-theme='dark'] .expense-loading-spinner {
+  border-color: #33475c;
+  border-top-color: #53d2ac;
+}
+
+html[data-theme='dark'] .download-expenses-button {
+  border-color: #8d72ec;
+  background: #7257d9;
 }
 
 @media (max-width: 980px) {

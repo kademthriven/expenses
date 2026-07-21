@@ -199,6 +199,6 @@ export const selectTotalSpent = createSelector(
 )
 export const selectCanActivatePremium = createSelector(
   [selectTotalSpent],
-  (totalSpent) => totalSpent > PREMIUM_THRESHOLD,
+  (totalSpent) => totalSpent >= PREMIUM_THRESHOLD,
 )
 export default expensesSlice.reducer

@@ -32,8 +32,9 @@ The app uses Redux Toolkit and React Redux. The root store combines two focused 
 
 - `auth`: login status, Firebase ID/bearer token, user ID, email, and auth loading state.
 - `expenses`: all fetched and newly created expenses plus load/save/update/delete request state.
+- `theme`: premium activation and the current light/dark appearance.
 
-Protected Firebase REST calls read the current user ID and bearer token from the auth reducer. Expense totals and premium eligibility are selectors derived from the expense reducer; the **Activate Premium** button appears when recorded expenses exceed ₹10,000.
+Protected Firebase REST calls read the current user ID and bearer token from the auth reducer. Expense totals and premium eligibility are selectors derived from the expense reducer; the **Activate Premium** button appears when recorded expenses reach ₹10,000. Activating premium enables the reducer-backed theme toggle and CSV expense download.
 
 ## Commands
 
