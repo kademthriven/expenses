@@ -831,6 +831,12 @@ form label {
   font-size: 0.88rem;
 }
 
+.expense-summary-actions {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
 .expense-total {
   display: flex;
   min-width: 162px;
@@ -854,6 +860,29 @@ form label {
 .expense-total strong {
   font-size: 1.2rem;
   letter-spacing: -0.025em;
+}
+
+.activate-premium-button {
+  width: 100%;
+  padding: 11px 16px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, #7257d9, #9b62d9);
+  box-shadow: 0 9px 22px rgba(114, 87, 217, 0.24);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.activate-premium-button:hover {
+  transform: translateY(-1px);
+}
+
+.activate-premium-button:focus-visible {
+  outline: 3px solid rgba(114, 87, 217, 0.28);
+  outline-offset: 3px;
 }
 
 .expense-form {
@@ -1465,6 +1494,11 @@ form label {
   .expenses-heading {
     flex-direction: column;
     gap: 20px;
+  }
+
+  .expense-summary-actions {
+    width: 100%;
+    justify-items: stretch;
   }
 
   .expense-total {

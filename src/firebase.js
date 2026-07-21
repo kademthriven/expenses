@@ -27,25 +27,27 @@ const firebaseApp = hasFirebaseConfig
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null
 
-async function getAuthenticatedDatabaseURL(user, path) {
-  if (!user || !realtimeDatabaseURL) {
+function getAuthenticatedDatabaseURL({ bearerToken, userId }, path) {
+  if (!bearerToken || !userId || !realtimeDatabaseURL) {
     throw new Error(databaseConfigurationError)
   }
 
-  const idToken = await user.getIdToken()
-  return `${realtimeDatabaseURL}/${path}.json?auth=${encodeURIComponent(idToken)}`
+  return `${realtimeDatabaseURL}/${path}.json?auth=${encodeURIComponent(bearerToken)}`
 }
 
-async function getExpenseCollectionURL(user) {
-  return getAuthenticatedDatabaseURL(user, `expenses/${encodeURIComponent(user.uid)}`)
+function getExpenseCollectionURL(authentication) {
+  return getAuthenticatedDatabaseURL(
+    authentication,
+    `expenses/${encodeURIComponent(authentication.userId)}`,
+  )
 }
 
-async function getExpenseURL(user, expenseId) {
+function getExpenseURL(authentication, expenseId) {
   if (!expenseId) throw new Error('The expense identifier is missing.')
 
   return getAuthenticatedDatabaseURL(
-    user,
-    `expenses/${encodeURIComponent(user.uid)}/${encodeURIComponent(expenseId)}`,
+    authentication,
+    `expenses/${encodeURIComponent(authentication.userId)}/${encodeURIComponent(expenseId)}`,
   )
 }
 
@@ -63,8 +65,8 @@ async function readDatabaseResponse(response, fallbackMessage) {
   return result
 }
 
-export async function createFirebaseExpense(user, expense) {
-  const expenseURL = await getExpenseCollectionURL(user)
+export async function createFirebaseExpense(authentication, expense) {
+  const expenseURL = getExpenseCollectionURL(authentication)
   const response = await fetch(expenseURL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -82,8 +84,8 @@ export async function createFirebaseExpense(user, expense) {
   return { id: result.name, ...expense }
 }
 
-export async function getFirebaseExpenses(user) {
-  const expenseURL = await getExpenseCollectionURL(user)
+export async function getFirebaseExpenses(authentication) {
+  const expenseURL = getExpenseCollectionURL(authentication)
   const response = await fetch(expenseURL, { method: 'GET' })
   const result = await readDatabaseResponse(
     response,
@@ -100,8 +102,8 @@ export async function getFirebaseExpenses(user) {
     ))
 }
 
-export async function updateFirebaseExpense(user, expenseId, expense) {
-  const expenseURL = await getExpenseURL(user, expenseId)
+export async function updateFirebaseExpense(authentication, expenseId, expense) {
+  const expenseURL = getExpenseURL(authentication, expenseId)
   const response = await fetch(expenseURL, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -119,8 +121,8 @@ export async function updateFirebaseExpense(user, expenseId, expense) {
   return { id: expenseId, ...result }
 }
 
-export async function deleteFirebaseExpense(user, expenseId) {
-  const expenseURL = await getExpenseURL(user, expenseId)
+export async function deleteFirebaseExpense(authentication, expenseId) {
+  const expenseURL = getExpenseURL(authentication, expenseId)
   const response = await fetch(expenseURL, { method: 'DELETE' })
   await readDatabaseResponse(
     response,
@@ -156,19 +158,18 @@ export async function sendFirebasePasswordResetEmail(email) {
   return { email: result.email ?? email }
 }
 
-async function requestFirebaseAccount(user, endpoint, payload, errorMessage) {
-  if (!user || !firebaseConfig.apiKey) {
+async function requestFirebaseAccount(bearerToken, endpoint, payload, errorMessage) {
+  if (!bearerToken || !firebaseConfig.apiKey) {
     throw new Error(firebaseConfigurationError)
   }
 
-  const idToken = await user.getIdToken()
   const response = await fetch(
     `https://identitytoolkit.googleapis.com/v1/${endpoint}?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        idToken,
+        idToken: bearerToken,
         ...payload,
       }),
     },
@@ -185,9 +186,9 @@ async function requestFirebaseAccount(user, endpoint, payload, errorMessage) {
   return result
 }
 
-export async function getFirebaseUserProfile(user) {
+export async function getFirebaseUserProfile(bearerToken) {
   const result = await requestFirebaseAccount(
-    user,
+    bearerToken,
     'accounts:lookup',
     {},
     'Firebase could not load your account details.',
@@ -207,20 +208,20 @@ export async function getFirebaseUserProfile(user) {
   }
 }
 
-export async function sendFirebaseEmailVerification(user) {
+export async function sendFirebaseEmailVerification(bearerToken) {
   const result = await requestFirebaseAccount(
-    user,
+    bearerToken,
     'accounts:sendOobCode',
     { requestType: 'VERIFY_EMAIL' },
     'Firebase could not send the verification email.',
   )
 
-  return { email: result.email ?? user.email }
+  return { email: result.email }
 }
 
-export async function updateFirebaseUserProfile(user, { displayName, photoURL }) {
+export async function updateFirebaseUserProfile(bearerToken, { displayName, photoURL }) {
   const result = await requestFirebaseAccount(
-    user,
+    bearerToken,
     'accounts:update',
     {
       displayName,
@@ -230,7 +231,7 @@ export async function updateFirebaseUserProfile(user, { displayName, photoURL })
     'Firebase could not update your profile.',
   )
 
-  await user.reload()
+  await auth?.currentUser?.reload()
 
   return {
     displayName: result.displayName ?? displayName,

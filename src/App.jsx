@@ -1,22 +1,31 @@
 import { useEffect, useState } from 'react'
 import {
   createUserWithEmailAndPassword,
-  onAuthStateChanged,
+  onIdTokenChanged,
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth'
+import { useDispatch, useSelector } from 'react-redux'
 import {
   auth,
-  createFirebaseExpense,
-  deleteFirebaseExpense,
   firebaseConfigurationError,
-  getFirebaseExpenses,
   getFirebaseUserProfile,
   sendFirebaseEmailVerification,
   sendFirebasePasswordResetEmail,
-  updateFirebaseExpense,
   updateFirebaseUserProfile,
 } from './firebase'
+import { clearCredentials, selectAuth, setCredentials } from './store/authSlice'
+import {
+  addExpense,
+  clearExpenseErrors,
+  editExpense,
+  fetchExpenses,
+  removeExpense,
+  resetExpenses,
+  selectCanActivatePremium,
+  selectExpensesState,
+  selectTotalSpent,
+} from './store/expensesSlice'
 import './App.css'
 
 const AUTH_ERROR_MESSAGES = {
@@ -95,26 +104,6 @@ function readablePasswordResetError(error) {
   return PASSWORD_RESET_ERROR_MESSAGES[error?.code]
     ?? error?.message
     ?? 'We could not send the password reset email. Please try again.'
-}
-
-function readableExpenseError(error) {
-  if (error?.name === 'TypeError') {
-    return 'We could not reach Firebase. Check your connection and try again.'
-  }
-
-  if (error?.code === 401 || error?.code === 403) {
-    return 'Firebase denied access to your expenses. Check the Realtime Database security rules and try again.'
-  }
-
-  if (error?.code === 404) {
-    return 'The Firebase Realtime Database could not be found. Check VITE_FIREBASE_DATABASE_URL and try again.'
-  }
-
-  if (error?.code === 429) {
-    return 'Firebase received too many requests. Wait a moment and try again.'
-  }
-
-  return error?.message ?? 'Firebase could not process your expenses. Please try again.'
 }
 
 function ForgotPasswordForm({ initialEmail, onBackToLogin }) {
@@ -453,7 +442,7 @@ function AuthPage() {
   )
 }
 
-function ProfileForm({ user, profile, onCancel, onUpdated }) {
+function ProfileForm({ bearerToken, profile, onCancel, onUpdated }) {
   const [fullName, setFullName] = useState(profile.displayName)
   const [photoURL, setPhotoURL] = useState(profile.photoURL)
   const [error, setError] = useState('')
@@ -483,7 +472,7 @@ function ProfileForm({ user, profile, onCancel, onUpdated }) {
     setIsSubmitting(true)
 
     try {
-      const updatedProfile = await updateFirebaseUserProfile(user, {
+      const updatedProfile = await updateFirebaseUserProfile(bearerToken, {
         displayName: cleanName,
         photoURL: cleanPhotoURL,
       })
@@ -578,82 +567,53 @@ const EXPENSE_CATEGORIES = [
   { value: 'other', label: 'Other', icon: 'O', color: '#718496' },
 ]
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
+const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
-  currency: 'USD',
+  currency: 'INR',
 })
 
-function DailyExpenses({ user }) {
+function DailyExpenses() {
+  const dispatch = useDispatch()
+  const {
+    items: storedExpenses,
+    loadStatus,
+    saveStatus,
+    updateStatus,
+    deletingId: deletingExpenseId,
+    loadError: expenseLoadError,
+    saveError,
+    actionError: storedExpenseActionError,
+  } = useSelector(selectExpensesState)
+  const totalSpent = useSelector(selectTotalSpent)
+  const canActivatePremium = useSelector(selectCanActivatePremium)
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
-  const [expenses, setExpenses] = useState([])
   const [expenseError, setExpenseError] = useState('')
-  const [expenseLoadError, setExpenseLoadError] = useState('')
-  const [isLoadingExpenses, setIsLoadingExpenses] = useState(true)
-  const [isSavingExpense, setIsSavingExpense] = useState(false)
-  const [expenseRefreshKey, setExpenseRefreshKey] = useState(0)
   const [editingExpense, setEditingExpense] = useState(null)
-  const [isUpdatingExpense, setIsUpdatingExpense] = useState(false)
-  const [deletingExpenseId, setDeletingExpenseId] = useState('')
-  const [expenseActionError, setExpenseActionError] = useState('')
+  const [localExpenseActionError, setExpenseActionError] = useState('')
+
+  const expenses = storedExpenses.map((expense) => ({
+    ...expense,
+    category: EXPENSE_CATEGORIES.find((item) => item.value === expense.category)
+      ?? EXPENSE_CATEGORIES.at(-1),
+    addedAt: new Date(expense.addedAt),
+  }))
+  const isLoadingExpenses = loadStatus === 'idle' || loadStatus === 'loading'
+  const isSavingExpense = saveStatus === 'loading'
+  const isUpdatingExpense = updateStatus === 'loading'
+  const expenseActionError = localExpenseActionError || storedExpenseActionError
 
   useEffect(() => {
-    let isCurrentRequest = true
-
-    async function loadExpenses() {
-      setIsLoadingExpenses(true)
-      setExpenseLoadError('')
-
-      try {
-        const savedExpenses = await getFirebaseExpenses(user)
-        const normalizedExpenses = savedExpenses
-          .map((expense) => {
-            const expenseAmount = Number(expense.amount)
-            const expenseCategory = EXPENSE_CATEGORIES.find(
-              (item) => item.value === expense.category,
-            ) ?? EXPENSE_CATEGORIES.at(-1)
-            const addedAt = new Date(expense.addedAt)
-
-            if (
-              !Number.isFinite(expenseAmount)
-              || typeof expense.description !== 'string'
-              || Number.isNaN(addedAt.getTime())
-            ) {
-              return null
-            }
-
-            return {
-              ...expense,
-              amount: expenseAmount,
-              category: expenseCategory,
-              addedAt,
-            }
-          })
-          .filter(Boolean)
-
-        if (isCurrentRequest) setExpenses(normalizedExpenses)
-      } catch (loadError) {
-        if (isCurrentRequest) setExpenseLoadError(readableExpenseError(loadError))
-      } finally {
-        if (isCurrentRequest) setIsLoadingExpenses(false)
-      }
-    }
-
-    loadExpenses()
-
-    return () => {
-      isCurrentRequest = false
-    }
-  }, [expenseRefreshKey, user])
-
-  const totalSpent = expenses.reduce((total, expense) => total + expense.amount, 0)
+    dispatch(fetchExpenses())
+  }, [dispatch])
 
   const handleExpenseSubmit = async (event) => {
     event.preventDefault()
     const parsedAmount = Number(amount)
     const cleanDescription = description.trim()
     setExpenseError('')
+    dispatch(clearExpenseErrors())
 
     if (!amount || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setExpenseError('Enter an amount greater than zero.')
@@ -671,37 +631,24 @@ function DailyExpenses({ user }) {
       return
     }
 
-    setIsSavingExpense(true)
-
     try {
-      const savedExpense = await createFirebaseExpense(user, {
+      await dispatch(addExpense({
         amount: Math.round(parsedAmount * 100) / 100,
         description: cleanDescription,
         category: selectedCategory.value,
         addedAt: new Date().toISOString(),
-      })
-
-      setExpenses((currentExpenses) => [
-        {
-          ...savedExpense,
-          category: selectedCategory,
-          addedAt: new Date(savedExpense.addedAt),
-        },
-        ...currentExpenses,
-      ])
-      setExpenseLoadError('')
+      })).unwrap()
       setAmount('')
       setDescription('')
       setCategory('')
-    } catch (saveError) {
-      setExpenseError(readableExpenseError(saveError))
-    } finally {
-      setIsSavingExpense(false)
+    } catch {
+      // The rejected thunk stores the API error in the expenses reducer.
     }
   }
 
   const startEditingExpense = (expense) => {
     setExpenseActionError('')
+    dispatch(clearExpenseErrors())
     setEditingExpense({
       id: expense.id,
       amount: String(expense.amount),
@@ -718,6 +665,7 @@ function DailyExpenses({ user }) {
       (item) => item.value === editingExpense.category,
     )
     setExpenseActionError('')
+    dispatch(clearExpenseErrors())
 
     if (!editingExpense.amount || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setExpenseActionError('Enter an amount greater than zero before submitting the edit.')
@@ -734,48 +682,31 @@ function DailyExpenses({ user }) {
       return
     }
 
-    setIsUpdatingExpense(true)
-
     try {
-      const updatedExpense = await updateFirebaseExpense(user, originalExpense.id, {
-        amount: Math.round(parsedAmount * 100) / 100,
-        description: cleanDescription,
-        category: selectedCategory.value,
-        addedAt: originalExpense.addedAt.toISOString(),
-      })
-
-      setExpenses((currentExpenses) => currentExpenses.map((expense) => (
-        expense.id === originalExpense.id
-          ? {
-              ...updatedExpense,
-              category: selectedCategory,
-              addedAt: new Date(updatedExpense.addedAt),
-            }
-          : expense
-      )))
+      await dispatch(editExpense({
+        expenseId: originalExpense.id,
+        expense: {
+          amount: Math.round(parsedAmount * 100) / 100,
+          description: cleanDescription,
+          category: selectedCategory.value,
+          addedAt: originalExpense.addedAt.toISOString(),
+        },
+      })).unwrap()
       setEditingExpense(null)
-    } catch (updateError) {
-      setExpenseActionError(readableExpenseError(updateError))
-    } finally {
-      setIsUpdatingExpense(false)
+    } catch {
+      // The rejected thunk stores the API error in the expenses reducer.
     }
   }
 
   const handleDeleteExpense = async (expenseId) => {
     setExpenseActionError('')
-    setDeletingExpenseId(expenseId)
+    dispatch(clearExpenseErrors())
 
     try {
-      await deleteFirebaseExpense(user, expenseId)
-      setExpenses((currentExpenses) => (
-        currentExpenses.filter((expense) => expense.id !== expenseId)
-      ))
+      await dispatch(removeExpense(expenseId)).unwrap()
       if (editingExpense?.id === expenseId) setEditingExpense(null)
-      console.log('Expense successfuly deleted')
-    } catch (deleteError) {
-      setExpenseActionError(readableExpenseError(deleteError))
-    } finally {
-      setDeletingExpenseId('')
+    } catch {
+      // The rejected thunk stores the API error in the expenses reducer.
     }
   }
 
@@ -787,9 +718,16 @@ function DailyExpenses({ user }) {
           <h2 id="daily-expenses-title">Daily expenses</h2>
           <p>Record what you spent today and keep every purchase in view.</p>
         </div>
-        <div className="expense-total" aria-label={`Total recorded: ${currencyFormatter.format(totalSpent)}`}>
-          <span>Recorded total</span>
-          <strong>{currencyFormatter.format(totalSpent)}</strong>
+        <div className="expense-summary-actions">
+          <div className="expense-total" aria-label={`Total recorded: ${currencyFormatter.format(totalSpent)}`}>
+            <span>Recorded total</span>
+            <strong>{currencyFormatter.format(totalSpent)}</strong>
+          </div>
+          {canActivatePremium && (
+            <button className="activate-premium-button" type="button">
+              Activate Premium
+            </button>
+          )}
         </div>
       </div>
 
@@ -797,7 +735,7 @@ function DailyExpenses({ user }) {
         <div className="expense-field expense-amount-field">
           <label htmlFor="expense-amount">Money spent</label>
           <div className="expense-control amount-control">
-            <span aria-hidden="true">$</span>
+            <span aria-hidden="true">₹</span>
             <input
               id="expense-amount"
               name="expense-amount"
@@ -872,9 +810,9 @@ function DailyExpenses({ user }) {
           {isSavingExpense ? 'Saving…' : isLoadingExpenses ? 'Loading…' : 'Add expense'}
         </button>
 
-        {expenseError && (
+        {(expenseError || saveError) && (
           <div className="message error-message expense-form-error" role="alert">
-            {expenseError}
+            {expenseError || saveError}
           </div>
         )}
       </form>
@@ -902,13 +840,13 @@ function DailyExpenses({ user }) {
       ) : expenseLoadError ? (
         <div className="expenses-load-error" role="alert">
           <p>{expenseLoadError}</p>
-          <button type="button" onClick={() => setExpenseRefreshKey((key) => key + 1)}>
+          <button type="button" onClick={() => dispatch(fetchExpenses())}>
             Try again
           </button>
         </div>
       ) : expenses.length === 0 ? (
         <div className="expenses-empty-state">
-          <span aria-hidden="true">$</span>
+          <span aria-hidden="true">₹</span>
           <h3>No expenses added yet</h3>
           <p>Use the form above to record your first expense for today.</p>
         </div>
@@ -928,7 +866,7 @@ function DailyExpenses({ user }) {
                   <div className="expense-field">
                     <label htmlFor={`edit-expense-amount-${expense.id}`}>Money spent</label>
                     <div className="expense-control amount-control">
-                      <span aria-hidden="true">$</span>
+                      <span aria-hidden="true">₹</span>
                       <input
                         id={`edit-expense-amount-${expense.id}`}
                         type="number"
@@ -1073,6 +1011,7 @@ function DailyExpenses({ user }) {
 }
 
 function AccountPage({ user }) {
+  const { bearerToken } = useSelector(selectAuth)
   const [profile, setProfile] = useState({
     displayName: user.displayName ?? '',
     photoURL: user.photoURL ?? '',
@@ -1099,7 +1038,7 @@ function AccountPage({ user }) {
       setProfileLoadError('')
 
       try {
-        const savedProfile = await getFirebaseUserProfile(user)
+        const savedProfile = await getFirebaseUserProfile(bearerToken)
         if (isCurrentRequest) setProfile(savedProfile)
       } catch (profileError) {
         if (isCurrentRequest) setProfileLoadError(readableProfileError(profileError))
@@ -1113,7 +1052,7 @@ function AccountPage({ user }) {
     return () => {
       isCurrentRequest = false
     }
-  }, [profileRefreshKey, user])
+  }, [bearerToken, profileRefreshKey])
 
   useEffect(() => {
     if (!verificationEmailSent || profile.emailVerified) return undefined
@@ -1142,8 +1081,8 @@ function AccountPage({ user }) {
     setIsSendingVerification(true)
 
     try {
-      const result = await sendFirebaseEmailVerification(user)
-      setVerificationEmailSent(result.email)
+      const result = await sendFirebaseEmailVerification(bearerToken)
+      setVerificationEmailSent(result.email ?? user.email)
     } catch (emailVerificationError) {
       setVerificationError(readableEmailVerificationError(emailVerificationError))
     } finally {
@@ -1154,10 +1093,6 @@ function AccountPage({ user }) {
   const handleLogout = async () => {
     setLogoutError('')
     setIsLoggingOut(true)
-
-    // Remove any app-managed token immediately; Firebase signOut clears the
-    // SDK's persisted authentication state and cached ID token.
-    window.localStorage.removeItem('idToken')
 
     try {
       await signOut(auth)
@@ -1199,7 +1134,7 @@ function AccountPage({ user }) {
 
       {isEditingProfile ? (
         <ProfileForm
-          user={user}
+          bearerToken={bearerToken}
           profile={profile}
           onCancel={() => setIsEditingProfile(false)}
           onUpdated={handleProfileUpdated}
@@ -1280,7 +1215,7 @@ function AccountPage({ user }) {
             </div>
           </section>
 
-          <DailyExpenses user={user} />
+          <DailyExpenses />
         </main>
       )}
     </div>
@@ -1288,17 +1223,42 @@ function AccountPage({ user }) {
 }
 
 function App() {
-  const [user, setUser] = useState(null)
-  const [isAuthLoading, setIsAuthLoading] = useState(Boolean(auth))
+  const dispatch = useDispatch()
+  const { isLoggedIn, isLoading: isAuthLoading, userId } = useSelector(selectAuth)
 
   useEffect(() => {
-    if (!auth) return undefined
+    if (!auth) {
+      dispatch(clearCredentials())
+      return undefined
+    }
 
-    return onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser)
-      setIsAuthLoading(false)
+    let callbackVersion = 0
+
+    return onIdTokenChanged(auth, async (nextUser) => {
+      const currentVersion = ++callbackVersion
+
+      if (!nextUser) {
+        dispatch(clearCredentials())
+        dispatch(resetExpenses())
+        return
+      }
+
+      try {
+        const bearerToken = await nextUser.getIdToken()
+        if (currentVersion !== callbackVersion) return
+
+        dispatch(setCredentials({
+          bearerToken,
+          userId: nextUser.uid,
+          email: nextUser.email,
+        }))
+      } catch {
+        if (currentVersion !== callbackVersion) return
+        dispatch(clearCredentials())
+        dispatch(resetExpenses())
+      }
     })
-  }, [])
+  }, [dispatch])
 
   if (isAuthLoading) {
     return (
@@ -1310,7 +1270,9 @@ function App() {
     )
   }
 
-  return user ? <AccountPage key={user.uid} user={user} /> : <AuthPage />
+  return isLoggedIn && auth?.currentUser
+    ? <AccountPage key={userId} user={auth.currentUser} />
+    : <AuthPage />
 }
 
 export default App

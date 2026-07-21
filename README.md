@@ -26,6 +26,15 @@ New accounts appear in **Firebase console → Build → Authentication → Users
 
 Expenses are stored under `expenses/{uid}/{expenseId}`. Every REST request includes the signed-in user's Firebase ID token, and the supplied database rules restrict each user to their own expense records.
 
+## Redux state
+
+The app uses Redux Toolkit and React Redux. The root store combines two focused reducers:
+
+- `auth`: login status, Firebase ID/bearer token, user ID, email, and auth loading state.
+- `expenses`: all fetched and newly created expenses plus load/save/update/delete request state.
+
+Protected Firebase REST calls read the current user ID and bearer token from the auth reducer. Expense totals and premium eligibility are selectors derived from the expense reducer; the **Activate Premium** button appears when recorded expenses exceed ₹10,000.
+
 ## Commands
 
 ```powershell
