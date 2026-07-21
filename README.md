@@ -40,6 +40,10 @@ Protected Firebase REST calls read the current user ID and bearer token from the
 
 ```powershell
 npm run dev
+npm test
+npm run test:watch
 npm run lint
 npm run build
 ```
+
+The automated test suite uses Vitest with React Testing Library, jest-dom, user-event, and jsdom. It contains 10 tests covering authentication state, expense state and premium eligibility, theme behavior, rendering, and user interaction.
