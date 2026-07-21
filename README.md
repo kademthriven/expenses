@@ -46,4 +46,4 @@ npm run lint
 npm run build
 ```
 
-The automated test suite uses Vitest with React Testing Library, jest-dom, user-event, and jsdom. It contains 10 tests covering authentication state, expense state and premium eligibility, theme behavior, rendering, and user interaction.
+The automated test suite uses Vitest with React Testing Library, jest-dom, user-event, and jsdom. It contains 20 tests covering authentication state and interactions, connected forms, expense state and premium eligibility, theme behavior, rendering, and user interaction.
